@@ -783,14 +783,8 @@ window.location.href = '/webapp/result?' + q;
       this.value = v.replace(/(\\d{4})(?=\\d)/g,'$1 ');
     });
 
-    document.getElementById('cardNo').addEventListener('keydown', function (e) {
-  const raw = this.value.replace(/\D/g, '');
-  if (e.key === 'Backspace' && raw.length === 0) {
-    document.getElementById('cardEmail')?.focus();
-  }
-});
+    
 // Auto jump between fields
-autoNext('cardNo', 'expMth', 16);
 autoNext('expMth', 'expYr', 2);
 autoNext('expYr', 'cvv', 2);
 

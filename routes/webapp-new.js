@@ -1,38 +1,38 @@
-const express = require('express');
-const axios = require('axios');
-const { getMeterInfo } = require('../services/ore');
+const express = require("express");
+const axios = require("axios");
+const { getMeterInfo } = require("../services/ore");
 
 const router = express.Router();
 
 const EVS_NEW_HEADERS = {
-  Accept: '*/*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Content-Type': 'application/json; charset=UTF-8',
-  Origin: 'https://cp2nus.evs.com.sg',
-  Referer: 'https://cp2nus.evs.com.sg/',
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+  Accept: "*/*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Content-Type": "application/json; charset=UTF-8",
+  Origin: "https://cp2nus.evs.com.sg",
+  Referer: "https://cp2nus.evs.com.sg/",
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
 };
 
-const PAY_BASE = 'https://enetspp-nus-live.evs.com.sg';
+const PAY_BASE = "https://enetspp-nus-live.evs.com.sg";
 
 function escHtml(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function ensureBaseHref(html, baseHref) {
-  const body = String(html || '');
+  const body = String(html || "");
   if (!body) return body;
   if (/<base\b/i.test(body)) return body;
   const headOpen = body.match(/<head\b[^>]*>/i)?.[0];
   if (!headOpen) return body;
   return body.replace(
     /<head\b[^>]*>/i,
-    `${headOpen}\n<base href="${String(baseHref)}">`
+    `${headOpen}\n<base href="${String(baseHref)}">`,
   );
 }
 
@@ -117,7 +117,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
   ${
     meterInfo?.address
       ? `<div class="row"><span>Address</span><span>${escHtml(meterInfo.address)}</span></div>`
-      : ''
+      : ""
   }
   <div class="row"><span>Amount</span><span>SGD ${escHtml(amtDisplay)}</span></div>
 
@@ -166,7 +166,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
 }
 
 function toB64(value) {
-  return Buffer.from(String(value ?? ''), 'utf8').toString('base64');
+  return Buffer.from(String(value ?? ""), "utf8").toString("base64");
 }
 
 function normalizeAmount(amount) {
@@ -179,33 +179,33 @@ function buildPayP({ meterDisplayName, amountDisplay, address, req, sign }) {
   const inner = new URLSearchParams({
     m: toB64(meterDisplayName),
     a: toB64(amountDisplay),
-    d: toB64(address || ''),
+    d: toB64(address || ""),
     t: String(req),
     s: String(sign),
   }).toString();
 
-  return Buffer.from(inner, 'utf8').toString('base64');
+  return Buffer.from(inner, "utf8").toString("base64");
 }
 
 function fromB64(value) {
-    try {
-      return Buffer.from(String(value || ''), 'base64').toString('utf8');
-    } catch {
-      return '';
-    }
+  try {
+    return Buffer.from(String(value || ""), "base64").toString("utf8");
+  } catch {
+    return "";
   }
-  
-  function renderResultPage({
-    result = 'unknown',
-    amount = '',
-    target = '',
-    txnRef = '',
-    code = '',
-    message = '',
-  }) {
-    const ok = String(result).toLowerCase() === 'success';
-  
-    return `<!DOCTYPE html>
+}
+
+function renderResultPage({
+  result = "unknown",
+  amount = "",
+  target = "",
+  txnRef = "",
+  code = "",
+  message = "",
+}) {
+  const ok = String(result).toLowerCase() === "success";
+
+  return `<!DOCTYPE html>
   <html>
   <head>
     <meta charset="UTF-8" />
@@ -229,8 +229,8 @@ function fromB64(value) {
         width: 100%;
         max-width: 520px;
         margin: 0 auto;
-        border: 2px solid ${ok ? 'green' : 'red'};
-        background-color: ${ok ? '#e8f5e9' : '#ffebee'};
+        border: 2px solid ${ok ? "green" : "red"};
+        background-color: ${ok ? "#e8f5e9" : "#ffebee"};
         color: #111;
       }
       .monospace-font {
@@ -240,7 +240,7 @@ function fromB64(value) {
       .close-btn {
         margin-top: 15px;
         padding: 10px 20px;
-        background-color: ${ok ? 'green' : 'red'};
+        background-color: ${ok ? "green" : "red"};
         color: white;
         border: none;
         border-radius: 5px;
@@ -259,7 +259,7 @@ function fromB64(value) {
     <p class="monospace-font">Transaction Reference: <span>${escHtml(txnRef)}</span></p>
     <p class="monospace-font">Code: <span>${escHtml(code)}</span></p>
     <p class="monospace-font">Transaction Message: <span>${escHtml(message)}</span></p>
-    <p class="monospace-font"><span>${ok ? 'Transaction Successful' : 'Transaction Failed'}</span></p>
+    <p class="monospace-font"><span>${ok ? "Transaction Successful" : "Transaction Failed"}</span></p>
   
     <button class="close-btn" onclick="closeTab()">Close</button>
   </div>
@@ -273,11 +273,11 @@ function fromB64(value) {
   </script>
   </body>
   </html>`;
-  }
+}
 
 async function initPay({ amount, username, meter_displayname }) {
   const resp = await axios.post(
-    'https://p-1.evs.com.sg/enets/init_pay',
+    "https://p-1.evs.com.sg/enets/init_pay",
     {
       amount: String(amount),
       username: String(username),
@@ -286,13 +286,13 @@ async function initPay({ amount, username, meter_displayname }) {
     {
       headers: EVS_NEW_HEADERS,
       validateStatus: () => true,
-    }
+    },
   );
 
   if (resp.status !== 200) {
     return {
       ok: false,
-      error: 'init_pay returned non-200',
+      error: "init_pay returned non-200",
       upstreamStatus: resp.status,
     };
   }
@@ -305,7 +305,7 @@ async function initPay({ amount, username, meter_displayname }) {
   if (!txn_identifier || !req || !sign) {
     return {
       ok: false,
-      error: 'Missing txn_identifier, req, or sign in init_pay response',
+      error: "Missing txn_identifier, req, or sign in init_pay response",
     };
   }
 
@@ -317,29 +317,31 @@ async function initPay({ amount, username, meter_displayname }) {
   };
 }
 
-router.get('/', async (req, res) => {
+router.get("/", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 
   if (!txtMtrId || !txtAmount) {
-    return res.status(400).send(errorPage('Missing meter ID or amount.'));
+    return res.status(400).send(errorPage("Missing meter ID or amount."));
   }
 
   try {
     const meterInfo = await getMeterInfo(txtMtrId);
-    return res.status(200).send(loadingPage(txtMtrId, txtAmount, meterInfo || {}));
+    return res
+      .status(200)
+      .send(loadingPage(txtMtrId, txtAmount, meterInfo || {}));
   } catch {
     return res.status(200).send(loadingPage(txtMtrId, txtAmount, {}));
   }
 });
 
-router.get('/bootstrap', async (req, res) => {
+router.get("/bootstrap", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 
   if (!txtMtrId || !txtAmount) {
     return res.status(400).json({
       ok: false,
-      stage: 'init',
-      error: 'Missing meter ID or amount.',
+      stage: "init",
+      error: "Missing meter ID or amount.",
     });
   }
 
@@ -347,8 +349,8 @@ router.get('/bootstrap', async (req, res) => {
   if (!amountDisplay) {
     return res.status(400).json({
       ok: false,
-      stage: 'init',
-      error: 'Invalid amount.',
+      stage: "init",
+      error: "Invalid amount.",
     });
   }
 
@@ -365,86 +367,86 @@ router.get('/bootstrap', async (req, res) => {
     if (!initOut.ok) {
       return res.status(502).json({
         ...initOut,
-        stage: 'init_pay',
+        stage: "init_pay",
       });
     }
 
     const p = buildPayP({
       meterDisplayName: txtMtrId,
       amountDisplay,
-      address: meterInfo?.address || '',
+      address: meterInfo?.address || "",
       req: initOut.req,
       sign: initOut.sign,
     });
 
     return res.status(200).json({
       ok: true,
-      stage: 'pay_page',
-      redirectUrl: '/webapp/new/pay?p=' + encodeURIComponent(p),
+      stage: "pay_page",
+      redirectUrl: "/webapp/new/pay?p=" + encodeURIComponent(p),
     });
   } catch (err) {
     return res.status(500).json({
       ok: false,
-      stage: 'init',
-      error: err.message || 'Unknown error',
+      stage: "init",
+      error: err.message || "Unknown error",
     });
   }
 });
 
-router.get('/pay', async (req, res) => {
-    const { p } = req.query;
-  
-    if (!p) {
-      return res.status(400).send(errorPage('Missing p.'));
-    }
-  
-    try {
-      const payResp = await axios.get(`${PAY_BASE}/pay`, {
-        params: { p: String(p) },
-        headers: {
-          Accept:
-            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Upgrade-Insecure-Requests': '1',
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
-          Referer: 'https://cp2nus.evs.com.sg/',
-        },
-        validateStatus: () => true,
-      });
-  
-      if (payResp.status !== 200) {
-        return res.status(502).send(
-          errorPage(`Upstream pay returned ${payResp.status}.`)
-        );
-      }
-  
-      let html = String(payResp.data || '');
-  
-      html = html.replace(
-        /https:\/\/enetspp-nus-live\.evs\.com\.sg\/pay_result/gi,
-        '/webapp/new/pay_result'
-      );
-  
-      html = ensureBaseHref(html, 'https://enetspp-nus-live.evs.com.sg/');
-  
-      res.setHeader('Content-Type', 'text/html; charset=UTF-8');
-      return res.status(200).send(html);
-    } catch (err) {
-      return res.status(500).send(
-        errorPage(err.message || 'Failed to open payment page.')
-      );
-    }
-  });
+router.get("/pay", async (req, res) => {
+  const { p } = req.query;
 
-router.post('/init_pay', async (req, res) => {
+  if (!p) {
+    return res.status(400).send(errorPage("Missing p."));
+  }
+
+  try {
+    const payResp = await axios.get(`${PAY_BASE}/pay`, {
+      params: { p: String(p) },
+      headers: {
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Upgrade-Insecure-Requests": "1",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        Referer: "https://cp2nus.evs.com.sg/",
+      },
+      validateStatus: () => true,
+    });
+
+    if (payResp.status !== 200) {
+      return res
+        .status(502)
+        .send(errorPage(`Upstream pay returned ${payResp.status}.`));
+    }
+
+    let html = String(payResp.data || "");
+
+    html = html.replace(
+      /https:\/\/enetspp-nus-live\.evs\.com\.sg\/pay_result/gi,
+      "/webapp/new/pay_result",
+    );
+
+    html = ensureBaseHref(html, "https://enetspp-nus-live.evs.com.sg/");
+
+    res.setHeader("Content-Type", "text/html; charset=UTF-8");
+    return res.status(200).send(html);
+  } catch (err) {
+    return res
+      .status(500)
+      .send(errorPage(err.message || "Failed to open payment page."));
+  }
+});
+
+router.post("/init_pay", async (req, res) => {
   try {
     const { amount, username, meter_displayname } = req.body || {};
 
     if (!amount || !username || !meter_displayname) {
       return res.status(400).json({
         ok: false,
-        error: 'Missing amount, username, or meter_displayname',
+        error: "Missing amount, username, or meter_displayname",
       });
     }
 
@@ -452,7 +454,7 @@ router.post('/init_pay', async (req, res) => {
     if (!amountDisplay) {
       return res.status(400).json({
         ok: false,
-        error: 'Invalid amount',
+        error: "Invalid amount",
       });
     }
 
@@ -468,7 +470,7 @@ router.post('/init_pay', async (req, res) => {
     const p = buildPayP({
       meterDisplayName: meter_displayname,
       amountDisplay,
-      address: meterInfo?.address || '',
+      address: meterInfo?.address || "",
       req: initOut.req,
       sign: initOut.sign,
     });
@@ -487,30 +489,30 @@ router.post('/init_pay', async (req, res) => {
   } catch (err) {
     return res.status(500).json({
       ok: false,
-      error: err.message || 'Unknown error',
+      error: err.message || "Unknown error",
     });
   }
 });
 
-router.get('/pay_result', (req, res) => {
-    const result = fromB64(req.query.r);
-    const target = fromB64(req.query.t);
-    const amount = fromB64(req.query.a);
-    const txnRef = fromB64(req.query.x);
-    const code = fromB64(req.query.s);
-    const message = fromB64(req.query.m);
-  
-    res.setHeader('Content-Type', 'text/html; charset=UTF-8');
-    return res.send(
-      renderResultPage({
-        result,
-        amount,
-        target,
-        txnRef,
-        code,
-        message,
-      })
-    );
-  });
+router.get("/pay_result", (req, res) => {
+  const result = fromB64(req.query.r);
+  const target = fromB64(req.query.t);
+  const amount = fromB64(req.query.a);
+  const txnRef = fromB64(req.query.x);
+  const code = fromB64(req.query.s);
+  const message = fromB64(req.query.m);
+
+  res.setHeader("Content-Type", "text/html; charset=UTF-8");
+  return res.send(
+    renderResultPage({
+      result,
+      amount,
+      target,
+      txnRef,
+      code,
+      message,
+    }),
+  );
+});
 
 module.exports = router;

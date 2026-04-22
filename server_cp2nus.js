@@ -1,6 +1,6 @@
-require('dotenv').config();
-const express = require('express');
-const axios = require('axios');
+require("dotenv").config();
+const express = require("express");
+const axios = require("axios");
 
 const app = express();
 
@@ -9,57 +9,63 @@ app.use(express.json());
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const EVS_API_BASE  = 'https://p-1.evs.com.sg';
-const ENETS_PP_HOST = 'https://enetspp-nus-live.evs.com.sg';
-const NETS_API_HOST = 'https://api.nets.com.sg';
+const EVS_API_BASE = "https://p-1.evs.com.sg";
+const ENETS_PP_HOST = "https://enetspp-nus-live.evs.com.sg";
+const NETS_API_HOST = "https://api.nets.com.sg";
 
 const ORE_HEADERS = {
-  Accept: 'application/json, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Content-Type': 'application/json; charset=UTF-8',
-  Origin: 'https://cp2.evs.com.sg',
-  Referer: 'https://cp2.evs.com.sg/',
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
-  Authorization: 'Bearer',
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Content-Type": "application/json; charset=UTF-8",
+  Origin: "https://cp2.evs.com.sg",
+  Referer: "https://cp2.evs.com.sg/",
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+  Authorization: "Bearer",
 };
 
-const FIXED_USER_ID = '5771';
+const FIXED_USER_ID = "5771";
 
 const DEFAULT_HEADERS = {
-  'Accept-Language': 'en-US,en;q=0.9',
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
-    '(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
+  "Accept-Language": "en-US,en;q=0.9",
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function escHtml(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function htmlDecode(str) {
-  return String(str || '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
+  return String(str || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'");
 }
 
 function extractHiddenField(html, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const m =
-    String(html || '').match(
-      new RegExp(`<input[^>]*\\bname=["']${escaped}["'][^>]*\\bvalue=["']([^"']*)["']`, 'i')
+    String(html || "").match(
+      new RegExp(
+        `<input[^>]*\\bname=["']${escaped}["'][^>]*\\bvalue=["']([^"']*)["']`,
+        "i",
+      ),
     ) ||
-    String(html || '').match(
-      new RegExp(`<input[^>]*\\bvalue=["']([^"']*)["'][^>]*\\bname=["']${escaped}["']`, 'i')
+    String(html || "").match(
+      new RegExp(
+        `<input[^>]*\\bvalue=["']([^"']*)["'][^>]*\\bname=["']${escaped}["']`,
+        "i",
+      ),
     );
   return m ? htmlDecode(m[1]) : null;
 }
@@ -77,43 +83,44 @@ async function initPay({ username, amount }) {
   const resp = await axios.post(
     `${EVS_API_BASE}/enets/init_pay`,
     {
-      amount:            String(amount),
-      username:          String(username),
-      user_id:           FIXED_USER_ID,
+      amount: String(amount),
+      username: String(username),
+      user_id: FIXED_USER_ID,
       meter_displayname: String(username),
     },
     {
       headers: {
         ...DEFAULT_HEADERS,
-        'Content-Type': 'application/json; charset=UTF-8',
-        Accept:         '*/*',
-        Origin:         'https://cp2nus.evs.com.sg',
-        Referer:        'https://cp2nus.evs.com.sg/',
+        "Content-Type": "application/json; charset=UTF-8",
+        Accept: "*/*",
+        Origin: "https://cp2nus.evs.com.sg",
+        Referer: "https://cp2nus.evs.com.sg/",
       },
       validateStatus: () => true,
-    }
+    },
   );
 
-  if (resp.status !== 200) throw new Error(`init_pay returned HTTP ${resp.status}`);
+  if (resp.status !== 200)
+    throw new Error(`init_pay returned HTTP ${resp.status}`);
 
   const { nets_resp } = resp.data || {};
   if (!nets_resp?.req || !nets_resp?.sign) {
-    throw new Error('init_pay response missing req or sign');
+    throw new Error("init_pay response missing req or sign");
   }
 
   return {
     txn_identifier: nets_resp.txn_identifier,
-    req:            nets_resp.req,
-    sign:           nets_resp.sign,
+    req: nets_resp.req,
+    sign: nets_resp.sign,
   };
 }
 
 async function getMeterInfo(meterDisplayName) {
-  const meterId = String(meterDisplayName || '').trim();
+  const meterId = String(meterDisplayName || "").trim();
   if (!meterId) return null;
 
   const resp = await axios.post(
-    'https://ore.evs.com.sg/cp/get_meter_info',
+    "https://ore.evs.com.sg/cp/get_meter_info",
     {
       request: {
         meter_displayname: meterId,
@@ -122,7 +129,7 @@ async function getMeterInfo(meterDisplayName) {
     {
       headers: ORE_HEADERS,
       validateStatus: () => true,
-    }
+    },
   );
 
   if (resp.status !== 200) return null;
@@ -130,40 +137,40 @@ async function getMeterInfo(meterDisplayName) {
 }
 
 function buildPayDisplayAddress(meterInfo) {
-  if (!meterInfo) return '';
+  if (!meterInfo) return "";
 
   const premise = meterInfo.premise || {};
-  const block = String(premise.block || '').trim();
-  const level = String(premise.level || '').trim();
-  const unit = String(premise.unit || '').trim();
-  const building = String(premise.building || '').trim();
+  const block = String(premise.block || "").trim();
+  const level = String(premise.level || "").trim();
+  const unit = String(premise.unit || "").trim();
+  const building = String(premise.building || "").trim();
 
   const head = `${block}, ${level}-${unit} ${building}`.trim();
 
-  const fullAddress = String(meterInfo.address || '').trim();
+  const fullAddress = String(meterInfo.address || "").trim();
   const prefix = `Block ${block}, ${level}-${unit} ${building}, `;
   const tail = fullAddress.startsWith(prefix)
     ? fullAddress.slice(prefix.length)
-    : fullAddress.replace(/^Block\s+[^,]+,\s*/, '');
+    : fullAddress.replace(/^Block\s+[^,]+,\s*/, "");
 
   return `${head}, ${tail}`.trim();
 }
 
 async function getCreditBalance(meterDisplayName) {
-  const meterId = String(meterDisplayName || '').trim();
+  const meterId = String(meterDisplayName || "").trim();
   if (!meterId) return null;
 
   const resp = await axios.post(
-    'https://ore.evs.com.sg/evs1/get_credit_bal',
+    "https://ore.evs.com.sg/evs1/get_credit_bal",
     {
       svcClaimDto: {
         username: meterId,
         user_id: null,
-        svcName: 'oresvc',
-        endpoint: '/evs1/get_credit_bal',
-        scope: 'self',
-        target: 'meter.credit_balance',
-        operation: 'read',
+        svcName: "oresvc",
+        endpoint: "/evs1/get_credit_bal",
+        scope: "self",
+        target: "meter.credit_balance",
+        operation: "read",
       },
       request: {
         meter_displayname: meterId,
@@ -172,7 +179,7 @@ async function getCreditBalance(meterDisplayName) {
     {
       headers: ORE_HEADERS,
       validateStatus: () => true,
-    }
+    },
   );
 
   if (resp.status !== 200) return null;
@@ -181,11 +188,15 @@ async function getCreditBalance(meterDisplayName) {
 
 // ── Step 2: GET meter info + balance ──────────────────────────────────────────
 
-
 async function getMeterSummary(meterDisplayName) {
-  const meterId = String(meterDisplayName || '').trim();
+  const meterId = String(meterDisplayName || "").trim();
   if (!meterId) {
-    return { address: null, payAddress: '', credit_bal: null, meter_info: null };
+    return {
+      address: null,
+      payAddress: "",
+      credit_bal: null,
+      meter_info: null,
+    };
   }
 
   const [meterInfo, creditBal] = await Promise.allSettled([
@@ -194,17 +205,12 @@ async function getMeterSummary(meterDisplayName) {
   ]);
 
   const info =
-    meterInfo.status === 'fulfilled'
-      ? meterInfo.value || null
-      : null;
+    meterInfo.status === "fulfilled" ? meterInfo.value || null : null;
 
   return {
     address: info?.address || null,
     payAddress: buildPayDisplayAddress(info),
-    credit_bal:
-      creditBal.status === 'fulfilled'
-        ? creditBal.value
-        : null,
+    credit_bal: creditBal.status === "fulfilled" ? creditBal.value : null,
     meter_info: info,
   };
 }
@@ -214,16 +220,16 @@ async function getMeterSummary(meterDisplayName) {
 function buildEnetsPayUrl({ req, sign, username, amount, address }) {
   const amtDisplay = Number(amount).toFixed(2);
 
-  const m = Buffer.from(String(username)).toString('base64');
-  const a = Buffer.from(amtDisplay).toString('base64');
-  const d = Buffer.from(String(address || '')).toString('base64');
+  const m = Buffer.from(String(username)).toString("base64");
+  const a = Buffer.from(amtDisplay).toString("base64");
+  const d = Buffer.from(String(address || "")).toString("base64");
 
   const innerString = `m=${m}&a=${a}&d=${d}&t=${req}&s=${sign}`;
-  const p = Buffer.from(innerString).toString('base64');
+  const p = Buffer.from(innerString).toString("base64");
 
-  console.log('[pay address]', address);
-  console.log('[pay inner]', innerString);
-  console.log('[pay url]', `${ENETS_PP_HOST}/pay?p=${p}`);
+  console.log("[pay address]", address);
+  console.log("[pay inner]", innerString);
+  console.log("[pay url]", `${ENETS_PP_HOST}/pay?p=${p}`);
 
   return `${ENETS_PP_HOST}/pay?p=${p}`;
 }
@@ -236,12 +242,13 @@ async function fetchNetsFields({ req, sign, username, amount, address }) {
   const ppResp = await axios.get(payUrl, {
     headers: {
       ...DEFAULT_HEADERS,
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-      'Upgrade-Insecure-Requests': '1',
-      'Sec-Fetch-Site': 'same-site',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-User': '?1',
-      'Sec-Fetch-Dest': 'document',
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+      "Upgrade-Insecure-Requests": "1",
+      "Sec-Fetch-Site": "same-site",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-User": "?1",
+      "Sec-Fetch-Dest": "document",
     },
     validateStatus: () => true,
     maxRedirects: 5,
@@ -249,17 +256,17 @@ async function fetchNetsFields({ req, sign, username, amount, address }) {
 
   if (ppResp.status !== 200) {
     throw new Error(
-      `enetspp /pay returned HTTP ${ppResp.status}; body=${String(ppResp.data || '').slice(0, 300)}`
+      `enetspp /pay returned HTTP ${ppResp.status}; body=${String(ppResp.data || "").slice(0, 300)}`,
     );
-    }
+  }
 
-  const html   = String(ppResp.data || '');
-  const txnReq = extractHiddenField(html, 'txnReq');
-  const keyId  = extractHiddenField(html, 'keyId');
-  const hmac   = extractHiddenField(html, 'hmac');
+  const html = String(ppResp.data || "");
+  const txnReq = extractHiddenField(html, "txnReq");
+  const keyId = extractHiddenField(html, "keyId");
+  const hmac = extractHiddenField(html, "hmac");
 
   if (!txnReq || !keyId || !hmac) {
-    throw new Error('Could not extract txnReq / keyId / hmac from /pay page');
+    throw new Error("Could not extract txnReq / keyId / hmac from /pay page");
   }
 
   return { txnReq, keyId, hmac, html };
@@ -272,7 +279,7 @@ async function callTxnReqListener({ txnReq, keyId, hmac }) {
   try {
     msgObj = JSON.parse(txnReq);
   } catch {
-    throw new Error('txnReq is not valid JSON: ' + txnReq.slice(0, 120));
+    throw new Error("txnReq is not valid JSON: " + txnReq.slice(0, 120));
   }
 
   const netsResp = await axios.post(
@@ -281,15 +288,15 @@ async function callTxnReqListener({ txnReq, keyId, hmac }) {
     {
       headers: {
         ...DEFAULT_HEADERS,
-        'Content-Type': 'application/json; charset=UTF-8',
-        Accept:         'application/json, text/javascript, */*; q=0.01',
-        Hmac:           hmac,
-        Keyid:          keyId,
-        Origin:         ENETS_PP_HOST,
-        Referer:        ENETS_PP_HOST + '/',
+        "Content-Type": "application/json; charset=UTF-8",
+        Accept: "application/json, text/javascript, */*; q=0.01",
+        Hmac: hmac,
+        Keyid: keyId,
+        Origin: ENETS_PP_HOST,
+        Referer: ENETS_PP_HOST + "/",
       },
       validateStatus: () => true,
-    }
+    },
   );
 
   if (netsResp.status !== 200) {
@@ -297,13 +304,13 @@ async function callTxnReqListener({ txnReq, keyId, hmac }) {
   }
 
   const data = netsResp.data || {};
-  const msg  = data.msg || {};
+  const msg = data.msg || {};
 
-  const rsaModulus  = msg.rsaModulus  || null;
+  const rsaModulus = msg.rsaModulus || null;
   const rsaExponent = msg.rsaExponent || null;
 
   if (!rsaModulus || !rsaExponent) {
-    throw new Error('TxnReqListener did not return RSA key fields');
+    throw new Error("TxnReqListener did not return RSA key fields");
   }
 
   const responseHmac = netsResp.headers?.hmac || null;
@@ -311,13 +318,13 @@ async function callTxnReqListener({ txnReq, keyId, hmac }) {
   return {
     rsaModulus,
     rsaExponent,
-    netsTxnRef:      msg.netsTxnRef      || null,
-    netsMid:         msg.netsMid         || null,
-    merchantTxnRef:  msg.merchantTxnRef  || null,
-    txnRand:         msg.txnRand         || null,   // needed for credit/init
+    netsTxnRef: msg.netsTxnRef || null,
+    netsMid: msg.netsMid || null,
+    merchantTxnRef: msg.merchantTxnRef || null,
+    txnRand: msg.txnRand || null, // needed for credit/init
     keyId,
-    hmac:            responseHmac || hmac,
-    txnAmount:       msg.txnAmount || null,
+    hmac: responseHmac || hmac,
+    txnAmount: msg.txnAmount || null,
   };
 }
 
@@ -332,59 +339,60 @@ async function runBootstrap({ txtMtrId, txtAmount }) {
   };
 
   try {
-  if (!txtMtrId) throw new Error('Missing txtMtrId');
-  if (!txtAmount) throw new Error('Missing txtAmount');
+    if (!txtMtrId) throw new Error("Missing txtMtrId");
+    if (!txtAmount) throw new Error("Missing txtAmount");
 
-  const amount = Number(String(txtAmount).replace(/[^0-9.]/g, ''));
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Invalid txtAmount');
+    const amount = Number(String(txtAmount).replace(/[^0-9.]/g, ""));
+    if (!Number.isFinite(amount) || amount <= 0)
+      throw new Error("Invalid txtAmount");
 
-  debug.stage = 'init_pay';
-  const initResp = await initPay({ username: txtMtrId, amount });
-  debug.step1Status = 200;
+    debug.stage = "init_pay";
+    const initResp = await initPay({ username: txtMtrId, amount });
+    debug.step1Status = 200;
 
-  const { req, sign, txn_identifier } = initResp;
-  // STEP 2
-  debug.stage = 'meter_info';
-  const meterSummary = await getMeterSummary(txtMtrId);
-  console.log('[meterSummary]', meterSummary);
-  debug.step2Status = 200;
+    const { req, sign, txn_identifier } = initResp;
+    // STEP 2
+    debug.stage = "meter_info";
+    const meterSummary = await getMeterSummary(txtMtrId);
+    console.log("[meterSummary]", meterSummary);
+    debug.step2Status = 200;
 
-  debug.stage = 'enetspp_pay';
+    debug.stage = "enetspp_pay";
 
-  if (!meterSummary.payAddress) {
-    throw new Error('payAddress is empty');
-  }
+    if (!meterSummary.payAddress) {
+      throw new Error("payAddress is empty");
+    }
 
     const { txnReq, keyId, hmac } = await fetchNetsFields({
       req,
       sign,
       username: txtMtrId,
       amount,
-      address: meterSummary.payAddress || '',
+      address: meterSummary.payAddress || "",
     });
-    
+
     debug.step3Status = 200;
-    
+
     const netsFields = await callTxnReqListener({ txnReq, keyId, hmac });
 
-  return {
-    ok:   true,
-    meta: {
-      txn_identifier,
-      meterId:  txtMtrId,
-      amount,
-      address:  meterSummary.address    || '',
-      balance:  meterSummary.credit_bal ?? '',
-    },
-    nets: netsFields,
-  };
-} catch (err) {
-  return {
-    ok: false,
-    ...debug,
-    error: err.message || 'Unknown error',
-  };
-}
+    return {
+      ok: true,
+      meta: {
+        txn_identifier,
+        meterId: txtMtrId,
+        amount,
+        address: meterSummary.address || "",
+        balance: meterSummary.credit_bal ?? "",
+      },
+      nets: netsFields,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      ...debug,
+      error: err.message || "Unknown error",
+    };
+  }
 }
 
 // ── Step 4a: POST /GW2/credit/init ───────────────────────────────────────────
@@ -399,39 +407,35 @@ function extractStatus(err) {
 async function callCreditInit({ txnRand, keyId, hmac }) {
   const body = new URLSearchParams({
     txnRand,
-    paymentMode:          'CC_1',
-    routeTo:              'FEH',
-    selectedTokenService: '',
-    tsTxnReqFlag:         '',
-    expiryMonth:          '',
-    expiryYear:           '',
-    tsStatus:             '',
-    tsIntMsg:             '',
-    tsMerchMsg:           '',
+    paymentMode: "CC_1",
+    routeTo: "FEH",
+    selectedTokenService: "",
+    tsTxnReqFlag: "",
+    expiryMonth: "",
+    expiryYear: "",
+    tsStatus: "",
+    tsIntMsg: "",
+    tsMerchMsg: "",
   }).toString();
 
-  const resp = await axios.post(
-    'https://www2.enets.sg/GW2/credit/init',
-    body,
-    {
-      headers: {
-        ...DEFAULT_HEADERS,
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        Accept:         '*/*',
-        Origin:         ENETS_PP_HOST,
-        Referer:        ENETS_PP_HOST + '/',
-        Hmac:           hmac,
-        Keyid:          keyId,
-      },
-      validateStatus: () => true,
-      maxRedirects:   0,
-    }
-  );
+  const resp = await axios.post("https://www2.enets.sg/GW2/credit/init", body, {
+    headers: {
+      ...DEFAULT_HEADERS,
+      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+      Accept: "*/*",
+      Origin: ENETS_PP_HOST,
+      Referer: ENETS_PP_HOST + "/",
+      Hmac: hmac,
+      Keyid: keyId,
+    },
+    validateStatus: () => true,
+    maxRedirects: 0,
+  });
 
   // Extract JSESSIONID from Set-Cookie
-  const setCookie     = [resp.headers['set-cookie'] || []].flat().join('; ');
-  const sessionMatch  = setCookie.match(/JSESSIONID=([^;]+)/i);
-  const jsessionId    = sessionMatch ? sessionMatch[1] : null;
+  const setCookie = [resp.headers["set-cookie"] || []].flat().join("; ");
+  const sessionMatch = setCookie.match(/JSESSIONID=([^;]+)/i);
+  const jsessionId = sessionMatch ? sessionMatch[1] : null;
 
   return { jsessionId, status: resp.status };
 }
@@ -440,49 +444,57 @@ async function callCreditInit({ txnRand, keyId, hmac }) {
 // Submits RSA-encrypted card. Returns auto-submit form fields for b2s POST.
 
 async function submitPanForm({
-  jsessionId, txnRand, netsMid, merchantTxnRef, enc,
-  name, expiryMonth, expiryYear, consumerEmail, imgPayMode = 'on',
+  jsessionId,
+  txnRand,
+  netsMid,
+  merchantTxnRef,
+  enc,
+  name,
+  expiryMonth,
+  expiryYear,
+  consumerEmail,
+  imgPayMode = "on",
   browserInfo = {},
 }) {
   // expiryYear arrives as 4-digit string ("2027") — pass it through as-is
-  const sessionPath = jsessionId ? `;jsessionid=${jsessionId}` : '';
+  const sessionPath = jsessionId ? `;jsessionid=${jsessionId}` : "";
 
   const body = new URLSearchParams({
     netsMid,
     merchantTxnRef,
     txnRand,
-    paymentMode:              'CC_1',
-    apcData:                  '',
-    browserJavaEnabled:       browserInfo.javaEnabled   || 'false',
-    browserJavaScriptEnabled: 'true',
-    browserLanguage:          browserInfo.language      || 'en-US',
-    browserColorDepth:        browserInfo.colorDepth    || '24',
-    browserScreenHeight:      browserInfo.screenHeight  || '963',
-    browserScreenWidth:       browserInfo.screenWidth   || '1920',
-    browserTz:                browserInfo.tz            || '-480',
-    browserUserAgent:         browserInfo.userAgent     || DEFAULT_HEADERS['User-Agent'],
+    paymentMode: "CC_1",
+    apcData: "",
+    browserJavaEnabled: browserInfo.javaEnabled || "false",
+    browserJavaScriptEnabled: "true",
+    browserLanguage: browserInfo.language || "en-US",
+    browserColorDepth: browserInfo.colorDepth || "24",
+    browserScreenHeight: browserInfo.screenHeight || "963",
+    browserScreenWidth: browserInfo.screenWidth || "1920",
+    browserTz: browserInfo.tz || "-480",
+    browserUserAgent: browserInfo.userAgent || DEFAULT_HEADERS["User-Agent"],
     enc,
     expiryMonth,
-    preExpiryMonth:           '',
-    preExpiryYear:            '',
-    selectedTokenService:     '',
-    tsProcessingCode:         '',
-    tsReqFlag:                '',
-    pageId:                   'payment_page',
-    button:                   'submit',
-    txnStepStatus:            '',
-    netsTxnRef:               '',
-    gexp:                     '',
-    gmod:                     '',
-    txnAmount:                '',
-    currencyCode:             '',
-    tenureSubscriptionId:     '',
-    paymentType:              '',
-    txnInterface:             'SOAPI',
+    preExpiryMonth: "",
+    preExpiryYear: "",
+    selectedTokenService: "",
+    tsProcessingCode: "",
+    tsReqFlag: "",
+    pageId: "payment_page",
+    button: "submit",
+    txnStepStatus: "",
+    netsTxnRef: "",
+    gexp: "",
+    gmod: "",
+    txnAmount: "",
+    currencyCode: "",
+    tenureSubscriptionId: "",
+    paymentType: "",
+    txnInterface: "SOAPI",
     imgPayMode,
     name,
-    selExpiryMonth:           expiryMonth,
-    expiryYear,               // 4-digit, already correct from client
+    selExpiryMonth: expiryMonth,
+    expiryYear, // 4-digit, already correct from client
     consumerEmail,
   }).toString();
 
@@ -492,30 +504,38 @@ async function submitPanForm({
     {
       headers: {
         ...DEFAULT_HEADERS,
-        'Content-Type':              'application/x-www-form-urlencoded',
-        Accept:                      'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Upgrade-Insecure-Requests': '1',
-        Origin:                      ENETS_PP_HOST,
-        Referer:                     ENETS_PP_HOST + '/',
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Upgrade-Insecure-Requests": "1",
+        Origin: ENETS_PP_HOST,
+        Referer: ENETS_PP_HOST + "/",
         ...(jsessionId ? { Cookie: `JSESSIONID=${jsessionId}` } : {}),
       },
       validateStatus: () => true,
-      maxRedirects:   5,
-    }
+      maxRedirects: 5,
+    },
   );
 
-  const html    = String(resp.data || '');
-  const message = extractHiddenField(html, 'message');
-  const hmac    = extractHiddenField(html, 'hmac');
-  const keyId   = extractHiddenField(html, 'KeyId');
-  const action  = html.match(/<form[^>]*id=["']post_form["'][^>]*action=["']([^"']+)["']/i)?.[1]
-                || html.match(/<form[^>]*action=["']([^"']+)["'][^>]*id=["']post_form["']/i)?.[1]
-                || null;
+  const html = String(resp.data || "");
+  const message = extractHiddenField(html, "message");
+  const hmac = extractHiddenField(html, "hmac");
+  const keyId = extractHiddenField(html, "KeyId");
+  const action =
+    html.match(
+      /<form[^>]*id=["']post_form["'][^>]*action=["']([^"']+)["']/i,
+    )?.[1] ||
+    html.match(
+      /<form[^>]*action=["']([^"']+)["'][^>]*id=["']post_form["']/i,
+    )?.[1] ||
+    null;
 
   if (!message) {
     // Try to surface an error message from the page
     const errText =
-      html.match(/<[^>]*class=["'][^"']*error[^"']*["'][^>]*>\s*([^<]+)/i)?.[1]?.trim() ||
+      html
+        .match(/<[^>]*class=["'][^"']*error[^"']*["'][^>]*>\s*([^<]+)/i)?.[1]
+        ?.trim() ||
       `panSubmitForm did not return a message field (HTTP ${resp.status})`;
     throw new Error(errText);
   }
@@ -526,24 +546,25 @@ async function submitPanForm({
 // ── Step 4c: POST to b2s → follow redirect to /pay_result ────────────────────
 
 async function postToB2s({ action, message, hmac, keyId }) {
-  const b2sUrl = action || 'https://p-1.evs.com.sg/enets/b2s';
-  const body   = new URLSearchParams({ message, hmac, KeyId: keyId }).toString();
+  const b2sUrl = action || "https://p-1.evs.com.sg/enets/b2s";
+  const body = new URLSearchParams({ message, hmac, KeyId: keyId }).toString();
 
   const resp = await axios.post(b2sUrl, body, {
     headers: {
       ...DEFAULT_HEADERS,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Origin:         'https://www2.enets.sg',
-      Referer:        'https://www2.enets.sg/',
+      "Content-Type": "application/x-www-form-urlencoded",
+      Origin: "https://www2.enets.sg",
+      Referer: "https://www2.enets.sg/",
     },
     validateStatus: () => true,
-    maxRedirects:   10,
+    maxRedirects: 10,
   });
 
-  const html     = String(resp.data || '');
+  const html = String(resp.data || "");
   // axios stores the final URL after redirects here:
-  const finalUrl = resp.request?.res?.responseUrl || resp.request?.responseURL || '';
-  const parsed   = parsePayResult(finalUrl, html);
+  const finalUrl =
+    resp.request?.res?.responseUrl || resp.request?.responseURL || "";
+  const parsed = parsePayResult(finalUrl, html);
 
   return { status: resp.status, html, parsed, finalUrl };
 }
@@ -554,46 +575,49 @@ function parsePayResult(finalUrl, html) {
   let r, t, a, x, s, m;
 
   try {
-    const u      = new URL(finalUrl);
-    const b64dec = v => (v ? Buffer.from(v, 'base64').toString('utf8') : null);
-    r = b64dec(u.searchParams.get('r'));  // 'success' | 'fail'
-    t = b64dec(u.searchParams.get('t'));  // target / meter id
-    a = b64dec(u.searchParams.get('a'));  // amount e.g. "6.00"
-    x = b64dec(u.searchParams.get('x'));  // txn reference
-    s = b64dec(u.searchParams.get('s'));  // stage resp code
-    m = b64dec(u.searchParams.get('m'));  // message
+    const u = new URL(finalUrl);
+    const b64dec = (v) =>
+      v ? Buffer.from(v, "base64").toString("utf8") : null;
+    r = b64dec(u.searchParams.get("r")); // 'success' | 'fail'
+    t = b64dec(u.searchParams.get("t")); // target / meter id
+    a = b64dec(u.searchParams.get("a")); // amount e.g. "6.00"
+    x = b64dec(u.searchParams.get("x")); // txn reference
+    s = b64dec(u.searchParams.get("s")); // stage resp code
+    m = b64dec(u.searchParams.get("m")); // message
   } catch {
     // fall through to HTML scrape
   }
 
   // Fallback: scrape the rendered HTML
   if (!r) {
-    const getText = label =>
-      html.match(new RegExp(label + '[\\s\\S]*?<span>([^<]+)<\\/span>', 'i'))?.[1]?.trim() || null;
+    const getText = (label) =>
+      html
+        .match(new RegExp(label + "[\\s\\S]*?<span>([^<]+)<\\/span>", "i"))?.[1]
+        ?.trim() || null;
 
-    r = getText('Transaction Result');
-    t = getText('Target');
-    a = getText('Amount \\(SGD\\)');
-    x = getText('Transaction Reference');
-    s = getText('Code');
-    m = getText('Transaction Message');
+    r = getText("Transaction Result");
+    t = getText("Target");
+    a = getText("Amount \\(SGD\\)");
+    x = getText("Transaction Reference");
+    s = getText("Code");
+    m = getText("Transaction Message");
 
     if (!r) {
-      if (/class=["'][^"']*\bsuccess\b/i.test(html))    r = 'success';
-      else if (/class=["'][^"']*\bfail\b/i.test(html))  r = 'fail';
+      if (/class=["'][^"']*\bsuccess\b/i.test(html)) r = "success";
+      else if (/class=["'][^"']*\bfail\b/i.test(html)) r = "fail";
     }
   }
 
-  const isSuccess = String(r || '').toLowerCase() === 'success';
-  const amtNum    = parseFloat(String(a || '0').replace(/[^0-9.]/g, '')) || 0;
+  const isSuccess = String(r || "").toLowerCase() === "success";
+  const amtNum = parseFloat(String(a || "0").replace(/[^0-9.]/g, "")) || 0;
 
   return {
-    status:         isSuccess ? 'success' : 'failure',
+    status: isSuccess ? "success" : "failure",
     merchantTxnRef: x || null,
-    meterId:        t || null,
-    amount:         amtNum > 0 ? `S$ ${amtNum.toFixed(2)}` : null,
-    stageRespCode:  s || null,
-    reason:         isSuccess ? 'Payment completed.' : (m || 'Transaction failed.'),
+    meterId: t || null,
+    amount: amtNum > 0 ? `S$ ${amtNum.toFixed(2)}` : null,
+    stageRespCode: s || null,
+    reason: isSuccess ? "Payment completed." : m || "Transaction failed.",
   };
 }
 
@@ -602,9 +626,9 @@ function parsePayResult(finalUrl, html) {
 // appear in the reason string when status is ambiguous.
 
 function normalizeFinalOutcome(parsed = {}) {
-  const reason    = parsed.reason || 'Unable to determine transaction outcome.';
+  const reason = parsed.reason || "Unable to determine transaction outcome.";
   const isFailure =
-    parsed.status === 'failure' ||
+    parsed.status === "failure" ||
     /rejected by financial institution/i.test(reason) ||
     /failed to purchase/i.test(reason) ||
     /system error/i.test(reason) ||
@@ -612,17 +636,26 @@ function normalizeFinalOutcome(parsed = {}) {
 
   return {
     ...parsed,
-    status: isFailure ? 'failure' : 'success',
-    reason: isFailure ? reason : 'Payment completed.',
+    status: isFailure ? "failure" : "success",
+    reason: isFailure ? reason : "Payment completed.",
   };
 }
 
 // ── Card payment page ─────────────────────────────────────────────────────────
 
 function cardPaymentPage({
-  n, e, netsMid, netsTxnRef, merchantTxnRef,
-  amount, meterId, address = '', balance = '',
-  txnRand = '', keyId = '', hmac = '',
+  n,
+  e,
+  netsMid,
+  netsTxnRef,
+  merchantTxnRef,
+  amount,
+  meterId,
+  address = "",
+  balance = "",
+  txnRand = "",
+  keyId = "",
+  hmac = "",
 }) {
   const amtDisplay = Number(amount || 0).toFixed(2);
   return `<!DOCTYPE html>
@@ -907,9 +940,9 @@ function cardPaymentPage({
 // ── Result page ───────────────────────────────────────────────────────────────
 
 function renderFinalResultPage(parsed) {
-  const ok     = parsed.status === 'success';
-  const title  = ok ? 'Top-Up Successful' : 'Top-Up Failed';
-  const reason = parsed.reason || 'Unable to determine transaction outcome.';
+  const ok = parsed.status === "success";
+  const title = ok ? "Top-Up Successful" : "Top-Up Failed";
+  const reason = parsed.reason || "Unable to determine transaction outcome.";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -927,8 +960,8 @@ function renderFinalResultPage(parsed) {
     min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
     padding:32px 28px;width:100%;max-width:400px;text-align:center;}
-  .logo{width:52px;height:52px;background:${ok?'var(--accent-dim)':'rgba(255,92,92,0.12)'};
-    border:1.5px solid ${ok?'var(--accent)':'var(--error)'};border-radius:14px;
+  .logo{width:52px;height:52px;background:${ok ? "var(--accent-dim)" : "rgba(255,92,92,0.12)"};
+    border:1.5px solid ${ok ? "var(--accent)" : "var(--error)"};border-radius:14px;
     display:flex;align-items:center;justify-content:center;margin:0 auto 24px;font-size:24px;}
   h1{margin:0 0 8px;font-size:1.25rem;}
   .subtitle{color:var(--muted);font-size:0.9rem;margin-bottom:24px;}
@@ -936,33 +969,38 @@ function renderFinalResultPage(parsed) {
     border-bottom:1px solid var(--border);font-size:0.9rem;}
   .detail-row:last-of-type{border-bottom:none;}
   .detail-label{color:var(--muted);}
-  .detail-value{color:${ok?'var(--accent)':'var(--text)'};font-family:var(--mono);
+  .detail-value{color:${ok ? "var(--accent)" : "var(--text)"};font-family:var(--mono);
     font-weight:500;text-align:right;max-width:58%;word-break:break-word;}
   .status-note{margin-top:22px;padding:14px;border-radius:12px;font-size:0.9rem;
-    background:${ok?'rgba(0,229,160,0.08)':'rgba(255,92,92,0.08)'};
-    border:1px solid ${ok?'rgba(0,229,160,0.22)':'rgba(255,92,92,0.25)'};
-    color:${ok?'var(--accent)':'var(--error)'};}
+    background:${ok ? "rgba(0,229,160,0.08)" : "rgba(255,92,92,0.08)"};
+    border:1px solid ${ok ? "rgba(0,229,160,0.22)" : "rgba(255,92,92,0.25)"};
+    color:${ok ? "var(--accent)" : "var(--error)"};}
   .actions{margin-top:20px;display:grid;gap:10px;}
   .btn{width:100%;border:none;border-radius:10px;padding:12px 16px;
     font-family:var(--sans);font-size:0.95rem;font-weight:700;cursor:pointer;
-    background:${ok?'var(--accent)':'#2a2a2a'};color:${ok?'#000':'#fff'};}
+    background:${ok ? "var(--accent)" : "#2a2a2a"};color:${ok ? "#000" : "#fff"};}
   .btn.secondary{background:#242424;color:#fff;}
 </style>
 </head>
 <body>
 <div class="card">
-  <div class="logo">${ok ? '✅' : '⚠️'}</div>
+  <div class="logo">${ok ? "✅" : "⚠️"}</div>
   <h1>${escHtml(title)}</h1>
-  <div class="subtitle">${ok ? 'Your transaction has been processed.' : 'Your transaction was not completed.'}</div>
-  <div class="detail-row"><span class="detail-label">Reference</span><span class="detail-value">${escHtml(parsed.merchantTxnRef || '-')}</span></div>
-  <div class="detail-row"><span class="detail-label">Meter ID</span><span class="detail-value">${escHtml(parsed.meterId || '-')}</span></div>
-  ${parsed.address ? `<div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escHtml(parsed.address)}</span></div>` : ''}
-  ${parsed.balance !== undefined && parsed.balance !== null && parsed.balance !== ''
-    ? `<div class="detail-row"><span class="detail-label">Balance</span><span class="detail-value">SGD ${escHtml(Number(parsed.balance).toFixed(2))}</span></div>` : ''}
-  <div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value">${escHtml(parsed.amount || '-')}</span></div>
+  <div class="subtitle">${ok ? "Your transaction has been processed." : "Your transaction was not completed."}</div>
+  <div class="detail-row"><span class="detail-label">Reference</span><span class="detail-value">${escHtml(parsed.merchantTxnRef || "-")}</span></div>
+  <div class="detail-row"><span class="detail-label">Meter ID</span><span class="detail-value">${escHtml(parsed.meterId || "-")}</span></div>
+  ${parsed.address ? `<div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escHtml(parsed.address)}</span></div>` : ""}
+  ${
+    parsed.balance !== undefined &&
+    parsed.balance !== null &&
+    parsed.balance !== ""
+      ? `<div class="detail-row"><span class="detail-label">Balance</span><span class="detail-value">SGD ${escHtml(Number(parsed.balance).toFixed(2))}</span></div>`
+      : ""
+  }
+  <div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value">${escHtml(parsed.amount || "-")}</span></div>
   <div class="status-note">${escHtml(reason)}</div>
   <div class="actions">
-    <button class="btn" onclick="window.location.href='/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || '')}&txtAmount=${encodeURIComponent((parsed.amount || '').replace(/[^0-9.]/g, ''))}'" >Top Up Again</button>
+    <button class="btn" onclick="window.location.href='/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || "")}&txtAmount=${encodeURIComponent((parsed.amount || "").replace(/[^0-9.]/g, ""))}'" >Top Up Again</button>
     <button class="btn secondary" onclick="window.Telegram?.WebApp?.close()">Close</button>
   </div>
 </div>
@@ -973,7 +1011,7 @@ function renderFinalResultPage(parsed) {
 // ── Loading page ──────────────────────────────────────────────────────────────
 
 function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
-  const amtDisplay     = Number(txtAmount).toFixed(2);
+  const amtDisplay = Number(txtAmount).toFixed(2);
   const balanceDisplay =
     meterInfo.credit_bal !== undefined && meterInfo.credit_bal !== null
       ? Number(meterInfo.credit_bal).toFixed(2)
@@ -1029,8 +1067,8 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
     <span class="detail-label">Meter ID</span>
     <span class="detail-value">${escHtml(txtMtrId)}</span>
   </div>
-  ${meterInfo.address ? `<div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escHtml(meterInfo.address)}</span></div>` : ''}
-  ${balanceDisplay !== null ? `<div class="detail-row"><span class="detail-label">Current Balance</span><span class="detail-value">SGD ${escHtml(balanceDisplay)}</span></div>` : ''}
+  ${meterInfo.address ? `<div class="detail-row"><span class="detail-label">Address</span><span class="detail-value">${escHtml(meterInfo.address)}</span></div>` : ""}
+  ${balanceDisplay !== null ? `<div class="detail-row"><span class="detail-label">Current Balance</span><span class="detail-value">SGD ${escHtml(balanceDisplay)}</span></div>` : ""}
   <div class="detail-row">
     <span class="detail-label">Amount</span>
     <span class="detail-value">SGD ${escHtml(amtDisplay)}</span>
@@ -1092,27 +1130,30 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
 
 // ── Main webapp entry ─────────────────────────────────────────────────────────
 
-app.get('/webapp', async (req, res) => {
+app.get("/webapp", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
-  if (!txtMtrId || !txtAmount) return res.status(400).send(errorPage('Missing meter ID or amount.'));
+  if (!txtMtrId || !txtAmount)
+    return res.status(400).send(errorPage("Missing meter ID or amount."));
 
   try {
     const meterSummary = await getMeterSummary(txtMtrId);
-    res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+    res.setHeader("Content-Type", "text/html; charset=UTF-8");
     return res.send(loadingPage(txtMtrId, txtAmount, meterSummary));
   } catch {
-    res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+    res.setHeader("Content-Type", "text/html; charset=UTF-8");
     return res.send(loadingPage(txtMtrId, txtAmount, {}));
   }
 });
 
 // ── Bootstrap: runs all steps, returns redirect URL to /webapp/pay ─────────────
 
-app.get('/webapp/bootstrap', async (req, res) => {
+app.get("/webapp/bootstrap", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 
   if (!txtMtrId || !txtAmount) {
-    return res.status(400).json({ ok: false, error: 'Missing meter ID or amount.' });
+    return res
+      .status(400)
+      .json({ ok: false, error: "Missing meter ID or amount." });
   }
 
   try {
@@ -1122,30 +1163,29 @@ app.get('/webapp/bootstrap', async (req, res) => {
       return res.status(500).json(boot);
     }
 
-const params = new URLSearchParams({
-  txtMtrId,
-  txtAmount,
-  address:        boot.meta.address || '',
-  balance:        String(boot.meta.balance ?? ''),
-  n:              boot.nets.rsaModulus || '',
-  e:              boot.nets.rsaExponent || '',
-  netsMid:        boot.nets.netsMid || '',
-  netsTxnRef:     boot.nets.netsTxnRef || '',
-  merchantTxnRef: boot.nets.merchantTxnRef || '',
-  txnRand:        boot.nets.txnRand || '',
-  keyId:          boot.nets.keyId || '',
-  hmac:           boot.nets.hmac || '',
-});
-
+    const params = new URLSearchParams({
+      txtMtrId,
+      txtAmount,
+      address: boot.meta.address || "",
+      balance: String(boot.meta.balance ?? ""),
+      n: boot.nets.rsaModulus || "",
+      e: boot.nets.rsaExponent || "",
+      netsMid: boot.nets.netsMid || "",
+      netsTxnRef: boot.nets.netsTxnRef || "",
+      merchantTxnRef: boot.nets.merchantTxnRef || "",
+      txnRand: boot.nets.txnRand || "",
+      keyId: boot.nets.keyId || "",
+      hmac: boot.nets.hmac || "",
+    });
 
     return res.status(200).json({
-      ok:          true,
-      redirectUrl: '/webapp/pay?' + params.toString(),
+      ok: true,
+      redirectUrl: "/webapp/pay?" + params.toString(),
     });
   } catch (err) {
     return res.status(500).json({
       ok: false,
-      stage: err.stage || 'unknown',
+      stage: err.stage || "unknown",
       step1Status: err.step1Status,
       step2Status: err.step2Status,
       step3Status: err.step3Status,
@@ -1156,127 +1196,181 @@ const params = new URLSearchParams({
 
 // ── Card payment page ─────────────────────────────────────────────────────────
 
-app.get('/webapp/pay', (req, res) => {
+app.get("/webapp/pay", (req, res) => {
   const {
-    txtMtrId, txtAmount, address = '', balance = '',
-    n, e, netsMid, netsTxnRef, merchantTxnRef,
-    txnRand = '', keyId = '', hmac = '',
+    txtMtrId,
+    txtAmount,
+    address = "",
+    balance = "",
+    n,
+    e,
+    netsMid,
+    netsTxnRef,
+    merchantTxnRef,
+    txnRand = "",
+    keyId = "",
+    hmac = "",
   } = req.query;
 
   if (!txtMtrId || !txtAmount || !n || !e || !netsMid || !netsTxnRef) {
-    return res.status(400).send(errorPage('Missing required payment parameters.'));
+    return res
+      .status(400)
+      .send(errorPage("Missing required payment parameters."));
   }
 
-  res.setHeader('Content-Type', 'text/html; charset=UTF-8');
-  return res.send(cardPaymentPage({
-    n, e, netsMid, netsTxnRef,
-    merchantTxnRef: merchantTxnRef || '',
-    amount:         txtAmount,
-    meterId:        txtMtrId,
-    address,
-    balance,
-    txnRand,
-    keyId,
-    hmac,
-  }));
+  res.setHeader("Content-Type", "text/html; charset=UTF-8");
+  return res.send(
+    cardPaymentPage({
+      n,
+      e,
+      netsMid,
+      netsTxnRef,
+      merchantTxnRef: merchantTxnRef || "",
+      amount: txtAmount,
+      meterId: txtMtrId,
+      address,
+      balance,
+      txnRand,
+      keyId,
+      hmac,
+    }),
+  );
 });
 
 // ── eNETS pay proxy ───────────────────────────────────────────────────────────
 
-app.post('/webapp/enets_pay', express.urlencoded({ extended: false, limit: '10mb' }), async (req, res) => {
-  try {
-    const {
-      enc, netsMid, netsTxnRef, merchantTxnRef, txnRand,
-      name, expiryMonth, expiryYear, consumerEmail, imgPayMode,
-      browserJavaEnabled, browserLanguage, browserColorDepth,
-      browserScreenHeight, browserScreenWidth, browserTz, browserUserAgent,
-      keyId: reqKeyId, hmac: reqHmac,
-      meterId, address, balance, amount,
-    } = req.body;
+app.post(
+  "/webapp/enets_pay",
+  express.urlencoded({ extended: false, limit: "10mb" }),
+  async (req, res) => {
+    try {
+      const {
+        enc,
+        netsMid,
+        netsTxnRef,
+        merchantTxnRef,
+        txnRand,
+        name,
+        expiryMonth,
+        expiryYear,
+        consumerEmail,
+        imgPayMode,
+        browserJavaEnabled,
+        browserLanguage,
+        browserColorDepth,
+        browserScreenHeight,
+        browserScreenWidth,
+        browserTz,
+        browserUserAgent,
+        keyId: reqKeyId,
+        hmac: reqHmac,
+        meterId,
+        address,
+        balance,
+        amount,
+      } = req.body;
 
-    if (!enc || !netsMid || !merchantTxnRef) {
-      return res.status(400).json({ ok: false, error: 'Missing required fields (enc, netsMid, merchantTxnRef)' });
+      if (!enc || !netsMid || !merchantTxnRef) {
+        return res
+          .status(400)
+          .json({
+            ok: false,
+            error: "Missing required fields (enc, netsMid, merchantTxnRef)",
+          });
+      }
+
+      const browserInfo = {
+        javaEnabled: browserJavaEnabled || "false",
+        language: browserLanguage || "en-US",
+        colorDepth: browserColorDepth || "24",
+        screenHeight: browserScreenHeight || "963",
+        screenWidth: browserScreenWidth || "1920",
+        tz: browserTz || "-480",
+        userAgent: browserUserAgent || DEFAULT_HEADERS["User-Agent"],
+      };
+
+      // Step 4a: establish credit session
+      const { jsessionId } = await callCreditInit({
+        txnRand: txnRand || "",
+        keyId: reqKeyId || "",
+        hmac: reqHmac || "",
+      });
+
+      // Step 4b: submit RSA-encrypted card data
+      // expiryYear arrives as 4-digit string ("2027") — pass through as-is
+      const panResult = await submitPanForm({
+        jsessionId,
+        txnRand: txnRand || "",
+        netsMid,
+        merchantTxnRef,
+        enc,
+        name: name || "",
+        expiryMonth: expiryMonth || "",
+        expiryYear: expiryYear || "",
+        consumerEmail: consumerEmail || "",
+        imgPayMode: imgPayMode || "on",
+        browserInfo,
+      });
+
+      // Step 4c: POST auto-submit form to b2s, follow redirect to /pay_result
+      const b2sResult = await postToB2s({
+        action: panResult.action,
+        message: panResult.message,
+        hmac: panResult.hmac,
+        keyId: panResult.keyId,
+      });
+
+      const parsed = b2sResult.parsed || {};
+      const normalized = normalizeFinalOutcome(parsed);
+      const finalAmount = parsed.amount || amount || "";
+
+      return res.status(200).json({
+        ok: true,
+        source: "pay_result",
+        status: normalized.status,
+        merchantTxnRef: normalized.merchantTxnRef || merchantTxnRef || "",
+        meterId: normalized.meterId || meterId || "",
+        address: address || "",
+        balance: balance || "",
+        amount: finalAmount,
+        reason: normalized.reason,
+        stageRespCode: parsed.stageRespCode || "",
+        upstreamStatus: { b2s: b2sResult.status, finalUrl: b2sResult.finalUrl },
+      });
+    } catch (err) {
+      console.error("[enets_pay]", err.message);
+      return res.status(500).json({ ok: false, error: err.message });
     }
-
-    const browserInfo = {
-      javaEnabled:  browserJavaEnabled  || 'false',
-      language:     browserLanguage     || 'en-US',
-      colorDepth:   browserColorDepth   || '24',
-      screenHeight: browserScreenHeight || '963',
-      screenWidth:  browserScreenWidth  || '1920',
-      tz:           browserTz           || '-480',
-      userAgent:    browserUserAgent    || DEFAULT_HEADERS['User-Agent'],
-    };
-
-    // Step 4a: establish credit session
-    const { jsessionId } = await callCreditInit({
-      txnRand: txnRand || '',
-      keyId:   reqKeyId || '',
-      hmac:    reqHmac  || '',
-    });
-
-    // Step 4b: submit RSA-encrypted card data
-    // expiryYear arrives as 4-digit string ("2027") — pass through as-is
-    const panResult = await submitPanForm({
-      jsessionId,
-      txnRand:       txnRand       || '',
-      netsMid,
-      merchantTxnRef,
-      enc,
-      name:          name          || '',
-      expiryMonth:   expiryMonth   || '',
-      expiryYear:    expiryYear    || '',
-      consumerEmail: consumerEmail || '',
-      imgPayMode:    imgPayMode    || 'on',
-      browserInfo,
-    });
-
-    // Step 4c: POST auto-submit form to b2s, follow redirect to /pay_result
-    const b2sResult = await postToB2s({
-      action:  panResult.action,
-      message: panResult.message,
-      hmac:    panResult.hmac,
-      keyId:   panResult.keyId,
-    });
-
-    const parsed     = b2sResult.parsed || {};
-    const normalized = normalizeFinalOutcome(parsed);
-    const finalAmount = parsed.amount || amount || '';
-
-    return res.status(200).json({
-      ok:             true,
-      source:         'pay_result',
-      status:         normalized.status,
-      merchantTxnRef: normalized.merchantTxnRef || merchantTxnRef || '',
-      meterId:        normalized.meterId        || meterId || '',
-      address:        address  || '',
-      balance:        balance  || '',
-      amount:         finalAmount,
-      reason:         normalized.reason,
-      stageRespCode:  parsed.stageRespCode || '',
-      upstreamStatus: { b2s: b2sResult.status, finalUrl: b2sResult.finalUrl },
-    });
-
-  } catch (err) {
-    console.error('[enets_pay]', err.message);
-    return res.status(500).json({ ok: false, error: err.message });
-  }
-});
+  },
+);
 
 // ── Result page ───────────────────────────────────────────────────────────────
 
-app.get('/webapp/result', (req, res) => {
+app.get("/webapp/result", (req, res) => {
   const {
-    status = 'unknown', ref = '', meterId = '', amount = '',
-    reason = '', address = '', balance = '',
+    status = "unknown",
+    ref = "",
+    meterId = "",
+    amount = "",
+    reason = "",
+    address = "",
+    balance = "",
   } = req.query;
 
-  res.setHeader('Content-Type', 'text/html; charset=UTF-8');
-  return res.send(renderFinalResultPage({
-    status, merchantTxnRef: ref, meterId, amount, reason, address, balance,
-  }));
+  res.setHeader("Content-Type", "text/html; charset=UTF-8");
+  return res.send(
+    renderFinalResultPage({
+      status,
+      merchantTxnRef: ref,
+      meterId,
+      amount,
+      reason,
+      address,
+      balance,
+    }),
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.listen(3001, () => console.log('Server running on http://localhost:3001'));
+app.listen(3001, () => console.log("Server running on http://localhost:3001"));

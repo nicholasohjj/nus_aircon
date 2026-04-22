@@ -1,147 +1,150 @@
-require('dotenv').config();
-const express = require('express');
-const axios = require('axios');
-const { wrapper } = require('axios-cookiejar-support');
-const { CookieJar } = require('tough-cookie');
-const cheerio = require('cheerio');
-const valid = require('card-validator');
-require('./bot');
+require("dotenv").config();
+const express = require("express");
+const axios = require("axios");
+const { wrapper } = require("axios-cookiejar-support");
+const { CookieJar } = require("tough-cookie");
+const cheerio = require("cheerio");
+const valid = require("card-validator");
+require("./bot");
 
 const app = express();
 
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-const BASE = 'https://nus-utown.evs.com.sg';
+const BASE = "https://nus-utown.evs.com.sg";
 
 const DEFAULT_HEADERS = {
   Accept:
-    'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'User-Agent':
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
-  'Upgrade-Insecure-Requests': '1',
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+  "Accept-Language": "en-US,en;q=0.9",
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+  "Upgrade-Insecure-Requests": "1",
 };
 
 function track(event, data = {}) {
-    console.log(JSON.stringify({
+  console.log(
+    JSON.stringify({
       ts: new Date().toISOString(),
       event,
       ...data,
-    }));
-  }
+    }),
+  );
+}
 
 function htmlDecode(str) {
-    return String(str || '')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'");
-  }
-  
-  function extractEvsCallbackFromHtml(html) {
-    const body = String(html || '');
-  
-    // Look for a form posting back to EVS transSumServlet
-    const formMatch = body.match(
-      /<form[^>]*action=["']([^"']*transSumServlet\?status=[^"']+)["'][^>]*>/i
-    );
-  
-    const action = formMatch ? htmlDecode(formMatch[1]) : null;
-  
-    const message = extractHiddenField(body, 'message');
-  
-    if (!action || !message) return null;
-  
-    let status = null;
-    let id = null;
-  
-    try {
-      const u = new URL(action, BASE);
-      status = u.searchParams.get('status');
-      id = u.searchParams.get('id');
-    } catch {
-      const m =
-        action.match(/transSumServlet\?status=([^&]+)&(?:amp;)?id=([^"&]+)/i) ||
-        action.match(/transSumServlet\?status=([^&]+).*?[?&](?:amp;)?id=([^"&]+)/i);
-  
-      status = m?.[1] || null;
-      id = m?.[2] || null;
-    }
-  
-    if (!status || !id) return null;
-  
-    return {
-      action,
-      status,
-      id,
-      message,
-    };
-  }
-  
-  async function postResultToEvs({ status, id, message, jsessionid }) {
-    const formBody = new URLSearchParams({
-      message: String(message),
-    }).toString();
-  
-    const headers = {
-      ...DEFAULT_HEADERS,
-      Origin: 'https://www.enets.sg',
-      Referer: 'https://www.enets.sg/',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    };
-  
-    if (jsessionid) {
-      headers.Cookie = `JSESSIONID=${String(jsessionid).trim()}`;
-    }
-  
-    const evsResp = await axios.post(
-      `${BASE}/EVSWebPOS/transSumServlet?status=${encodeURIComponent(
-        String(status)
-      )}&id=${encodeURIComponent(String(id))}`,
-      formBody,
-      {
-        headers,
-        validateStatus: () => true,
-        maxRedirects: 0,
-      }
-    );
-  
-    return {
-      upstreamStatus: evsResp.status,
-      html: String(evsResp.data || ''),
-      parsed: parseEvsTransactionSummary(evsResp.data),
-    };
+  return String(str || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function extractEvsCallbackFromHtml(html) {
+  const body = String(html || "");
+
+  // Look for a form posting back to EVS transSumServlet
+  const formMatch = body.match(
+    /<form[^>]*action=["']([^"']*transSumServlet\?status=[^"']+)["'][^>]*>/i,
+  );
+
+  const action = formMatch ? htmlDecode(formMatch[1]) : null;
+
+  const message = extractHiddenField(body, "message");
+
+  if (!action || !message) return null;
+
+  let status = null;
+  let id = null;
+
+  try {
+    const u = new URL(action, BASE);
+    status = u.searchParams.get("status");
+    id = u.searchParams.get("id");
+  } catch {
+    const m =
+      action.match(/transSumServlet\?status=([^&]+)&(?:amp;)?id=([^"&]+)/i) ||
+      action.match(
+        /transSumServlet\?status=([^&]+).*?[?&](?:amp;)?id=([^"&]+)/i,
+      );
+
+    status = m?.[1] || null;
+    id = m?.[2] || null;
   }
 
+  if (!status || !id) return null;
+
+  return {
+    action,
+    status,
+    id,
+    message,
+  };
+}
+
+async function postResultToEvs({ status, id, message, jsessionid }) {
+  const formBody = new URLSearchParams({
+    message: String(message),
+  }).toString();
+
+  const headers = {
+    ...DEFAULT_HEADERS,
+    Origin: "https://www.enets.sg",
+    Referer: "https://www.enets.sg/",
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+
+  if (jsessionid) {
+    headers.Cookie = `JSESSIONID=${String(jsessionid).trim()}`;
+  }
+
+  const evsResp = await axios.post(
+    `${BASE}/EVSWebPOS/transSumServlet?status=${encodeURIComponent(
+      String(status),
+    )}&id=${encodeURIComponent(String(id))}`,
+    formBody,
+    {
+      headers,
+      validateStatus: () => true,
+      maxRedirects: 0,
+    },
+  );
+
+  return {
+    upstreamStatus: evsResp.status,
+    html: String(evsResp.data || ""),
+    parsed: parseEvsTransactionSummary(evsResp.data),
+  };
+}
+
 function extractMerchantTxnRef(html) {
-  const body = String(html || '');
+  const body = String(html || "");
   const m =
     body.match(
-      /<input[^>]*\bname=['"]merchant_txn_ref['"][^>]*\bvalue=['"]([^'"]+)['"][^>]*>/i
-    ) ||
-    body.match(/\bmerchant_txn_ref\b[^]*?\bvalue=['"]([^'"]+)['"]/i);
+      /<input[^>]*\bname=['"]merchant_txn_ref['"][^>]*\bvalue=['"]([^'"]+)['"][^>]*>/i,
+    ) || body.match(/\bmerchant_txn_ref\b[^]*?\bvalue=['"]([^'"]+)['"]/i);
   return m?.[1] || null;
 }
 
 function extractEnetsMessage(html) {
-  const body = String(html || '');
+  const body = String(html || "");
   const m = body.match(
-    /<input[^>]*\bname=['"]message['"][^>]*\bvalue=['"]([^'"]+)['"][^>]*>/i
+    /<input[^>]*\bname=['"]message['"][^>]*\bvalue=['"]([^'"]+)['"][^>]*>/i,
   );
   return m?.[1] || null;
 }
 
 function ensureBaseHref(html, baseHref) {
-  const body = String(html || '');
+  const body = String(html || "");
   if (!body) return body;
   if (/<base\b/i.test(body)) return body;
   const headOpen = body.match(/<head\b[^>]*>/i)?.[0];
   if (!headOpen) return body;
   return body.replace(
     /<head\b[^>]*>/i,
-    `${headOpen}\n<base href="${String(baseHref)}">`
+    `${headOpen}\n<base href="${String(baseHref)}">`,
   );
 }
 
@@ -159,68 +162,72 @@ function resolveUpstreamLocation(baseUrl, location) {
 }
 
 function normalizeFinalOutcome(parsed = {}) {
-    const reason = parsed.reason || 'Unable to determine transaction outcome.';
-  
-    // Only two outcomes:
-    // - explicit failure text => failure
-    // - anything else => success
-    const isFailure =
-      parsed.status === 'failure' ||
-      /rejected by financial institution/i.test(reason) ||
-      /failed to purchase/i.test(reason);
-  
-    return {
-      ...parsed,
-      status: isFailure ? 'failure' : 'success',
-      reason: isFailure ? reason : 'Payment completed.',
-    };
-  }
-function parseEvsTransactionSummary(html) {
-    const body = String(html || '');
-  
-    const title =
-      body.match(/<title>(.*?)<\/title>/i)?.[1]?.trim() || null;
-  
-    const merchantTxnRef =
-      body.match(/transSumServlet\?status=\d+&amp;id=([^"&]+)/i)?.[1] ||
-      body.match(/transSumServlet\?status=\d+&id=([^"&]+)/i)?.[1] ||
-      null;
-  
-    const meterId =
-      body.match(/Meter ID[\s\S]*?<b><u>(\d{5,})<\/u><\/b>/i)?.[1] ||
-      body.match(/<b><u>(\d{5,})<\/u><\/b>/i)?.[1] ||
-      null;
-  
-    const address =
-      body.match(/Address[\s\S]*?<b><u>([^<]+)<\/u><\/b>/i)?.[1]?.trim() || null;
-  
-    const amount =
-      body.match(/Total Amount \(Inclusive of GST\)[\s\S]*?<b>(S\$ ?[\d.]+)<\/b>/i)?.[1]?.trim() ||
-      body.match(/<b>S\$ ?([\d.]+)<\/b>/i)?.[1] ||
-      null;
-  
-    const isFailure =
-      /Transaction is rejected by financial institution\./i.test(body);
-  
-    return {
-      title,
-      merchantTxnRef,
-      meterId,
-      address,
-      amount,
-      status: isFailure ? 'failure': 'success',
-      reason: isFailure
-      ? 'Transaction is rejected by financial institution.'
-      : 'Payment completed.',
-    };
-  }
+  const reason = parsed.reason || "Unable to determine transaction outcome.";
 
-  function renderFinalResultPage(parsed) {
-    const ok = parsed.status === 'success';
-    const title = ok ? 'Top-Up Successful' : 'Top-Up Failed';
-    const reason = parsed.reason || 'Unable to determine transaction outcome.';
-  
-    return `<!DOCTYPE html>
+  // Only two outcomes:
+  // - explicit failure text => failure
+  // - anything else => success
+  const isFailure =
+    parsed.status === "failure" ||
+    /rejected by financial institution/i.test(reason) ||
+    /failed to purchase/i.test(reason);
+
+  return {
+    ...parsed,
+    status: isFailure ? "failure" : "success",
+    reason: isFailure ? reason : "Payment completed.",
+  };
+}
+function parseEvsTransactionSummary(html) {
+  const body = String(html || "");
+
+  const title = body.match(/<title>(.*?)<\/title>/i)?.[1]?.trim() || null;
+
+  const merchantTxnRef =
+    body.match(/transSumServlet\?status=\d+&amp;id=([^"&]+)/i)?.[1] ||
+    body.match(/transSumServlet\?status=\d+&id=([^"&]+)/i)?.[1] ||
+    null;
+
+  const meterId =
+    body.match(/Meter ID[\s\S]*?<b><u>(\d{5,})<\/u><\/b>/i)?.[1] ||
+    body.match(/<b><u>(\d{5,})<\/u><\/b>/i)?.[1] ||
+    null;
+
+  const address =
+    body.match(/Address[\s\S]*?<b><u>([^<]+)<\/u><\/b>/i)?.[1]?.trim() || null;
+
+  const amount =
+    body
+      .match(
+        /Total Amount \(Inclusive of GST\)[\s\S]*?<b>(S\$ ?[\d.]+)<\/b>/i,
+      )?.[1]
+      ?.trim() ||
+    body.match(/<b>S\$ ?([\d.]+)<\/b>/i)?.[1] ||
+    null;
+
+  const isFailure = /Transaction is rejected by financial institution\./i.test(
+    body,
+  );
+
+  return {
+    title,
+    merchantTxnRef,
+    meterId,
+    address,
+    amount,
+    status: isFailure ? "failure" : "success",
+    reason: isFailure
+      ? "Transaction is rejected by financial institution."
+      : "Payment completed.",
+  };
+}
+
+function renderFinalResultPage(parsed) {
+  const ok = parsed.status === "success";
+  const title = ok ? "Top-Up Successful" : "Top-Up Failed";
+  const reason = parsed.reason || "Unable to determine transaction outcome.";
+
+  return `<!DOCTYPE html>
   <html lang="en">
   <head>
   <meta charset="UTF-8">
@@ -270,8 +277,8 @@ function parseEvsTransactionSummary(html) {
     .logo {
       width: 52px;
       height: 52px;
-      background: ${ok ? 'var(--accent-dim)' : 'rgba(255,92,92,0.12)'};
-      border: 1.5px solid ${ok ? 'var(--accent)' : 'var(--error)'};
+      background: ${ok ? "var(--accent-dim)" : "rgba(255,92,92,0.12)"};
+      border: 1.5px solid ${ok ? "var(--accent)" : "var(--error)"};
       border-radius: 14px;
       display: flex;
       align-items: center;
@@ -309,7 +316,7 @@ function parseEvsTransactionSummary(html) {
     }
   
     .detail-value {
-      color: ${ok ? 'var(--accent)' : 'var(--text)'};
+      color: ${ok ? "var(--accent)" : "var(--text)"};
       font-family: var(--mono);
       font-weight: 500;
       text-align: right;
@@ -322,9 +329,9 @@ function parseEvsTransactionSummary(html) {
       padding: 14px;
       border-radius: 12px;
       font-size: 0.9rem;
-      background: ${ok ? 'rgba(0,229,160,0.08)' : 'rgba(255,92,92,0.08)'};
-      border: 1px solid ${ok ? 'rgba(0,229,160,0.22)' : 'rgba(255,92,92,0.25)'};
-      color: ${ok ? 'var(--accent)' : 'var(--error)'};
+      background: ${ok ? "rgba(0,229,160,0.08)" : "rgba(255,92,92,0.08)"};
+      border: 1px solid ${ok ? "rgba(0,229,160,0.22)" : "rgba(255,92,92,0.25)"};
+      color: ${ok ? "var(--accent)" : "var(--error)"};
     }
   
     .actions {
@@ -342,8 +349,8 @@ function parseEvsTransactionSummary(html) {
       font-size: 0.95rem;
       font-weight: 700;
       cursor: pointer;
-      background: ${ok ? 'var(--accent)' : '#2a2a2a'};
-      color: ${ok ? '#000' : '#fff'};
+      background: ${ok ? "var(--accent)" : "#2a2a2a"};
+      color: ${ok ? "#000" : "#fff"};
     }
   
     .btn.secondary {
@@ -354,17 +361,17 @@ function parseEvsTransactionSummary(html) {
   </head>
   <body>
     <div class="card">
-      <div class="logo">${ok ? '✅' : '⚠️'}</div>
+      <div class="logo">${ok ? "✅" : "⚠️"}</div>
       <h1>${escHtml(title)}</h1>
-      <div class="subtitle">${ok ? 'Your transaction has been processed.' : 'Your transaction was not completed.'}</div>
+      <div class="subtitle">${ok ? "Your transaction has been processed." : "Your transaction was not completed."}</div>
   
       <div class="detail-row">
         <span class="detail-label">Reference</span>
-        <span class="detail-value">${escHtml(parsed.merchantTxnRef || '-')}</span>
+        <span class="detail-value">${escHtml(parsed.merchantTxnRef || "-")}</span>
       </div>
       <div class="detail-row">
         <span class="detail-label">Meter ID</span>
-        <span class="detail-value">${escHtml(parsed.meterId || '-')}</span>
+        <span class="detail-value">${escHtml(parsed.meterId || "-")}</span>
       </div>
       ${
         parsed.address
@@ -373,26 +380,28 @@ function parseEvsTransactionSummary(html) {
         <span class="detail-label">Address</span>
         <span class="detail-value">${escHtml(parsed.address)}</span>
       </div>`
-          : ''
+          : ""
       }
       ${
-        parsed.balance !== undefined && parsed.balance !== null && parsed.balance !== ''
+        parsed.balance !== undefined &&
+        parsed.balance !== null &&
+        parsed.balance !== ""
           ? `
       <div class="detail-row">
         <span class="detail-label">Balance</span>
         <span class="detail-value">SGD ${escHtml(Number(parsed.balance).toFixed(2))}</span>
       </div>`
-          : ''
+          : ""
       }
       <div class="detail-row">
         <span class="detail-label">Amount</span>
-        <span class="detail-value">${escHtml(parsed.amount || '-')}</span>
+        <span class="detail-value">${escHtml(parsed.amount || "-")}</span>
       </div>
   
       <div class="status-note">${escHtml(reason)}</div>
   
       <div class="actions">
-        <button class="btn" onclick="window.location.href='/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || '')}&txtAmount=${encodeURIComponent((parsed.amount || '').replace(/[^0-9.]/g, ''))}'">
+        <button class="btn" onclick="window.location.href='/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || "")}&txtAmount=${encodeURIComponent((parsed.amount || "").replace(/[^0-9.]/g, ""))}'">
           Top Up Again
         </button>
         <button class="btn secondary" onclick="closeMiniApp()">Close</button>
@@ -407,9 +416,13 @@ function parseEvsTransactionSummary(html) {
   </script>
   </body>
   </html>`;
-  }
+}
 
-async function getFollowRedirects(client, url, { params, headers, maxHops = 4 } = {}) {
+async function getFollowRedirects(
+  client,
+  url,
+  { params, headers, maxHops = 4 } = {},
+) {
   let currentUrl = String(url);
   let resp = null;
   let hops = 0;
@@ -434,44 +447,55 @@ async function getFollowRedirects(client, url, { params, headers, maxHops = 4 } 
 }
 
 function classifyLoginResponse(html) {
-  const body = String(html || '');
+  const body = String(html || "");
   const isValid =
-    body.includes('<title>EVS POS Package Selection Page</title>') ||
+    body.includes("<title>EVS POS Package Selection Page</title>") ||
     body.includes('action="/EVSWebPOS/selectOfferServlet"') ||
-    body.includes('Please confirm you are purchasing for the above premise');
+    body.includes("Please confirm you are purchasing for the above premise");
   const isInvalid =
-    body.includes('<title>EVS POS Main Page</title>') ||
-    body.includes('Meter not found.') ||
+    body.includes("<title>EVS POS Main Page</title>") ||
+    body.includes("Meter not found.") ||
     body.includes('action="/EVSWebPOS/loginServlet"');
-  if (isValid) return 'valid';
-  if (isInvalid) return 'invalid';
-  return 'unknown';
+  if (isValid) return "valid";
+  if (isInvalid) return "invalid";
+  return "unknown";
 }
 
 function classifySelectOfferResponse(html) {
-  const body = String(html || '');
+  const body = String(html || "");
   const isSuccess =
-    body.includes('<title>EVS POS Payment Selection Page</title>') ||
-    body.includes('Please select a payment mode') ||
-    body.includes('img_creditcard') ||
-    body.includes('hidPurAmt');
+    body.includes("<title>EVS POS Payment Selection Page</title>") ||
+    body.includes("Please select a payment mode") ||
+    body.includes("img_creditcard") ||
+    body.includes("hidPurAmt");
   const isMainPage =
-    body.includes('<title>EVS POS Main Page</title>') ||
-    body.includes('Meter not found.') ||
+    body.includes("<title>EVS POS Main Page</title>") ||
+    body.includes("Meter not found.") ||
     body.includes('action="/EVSWebPOS/loginServlet"');
   const isPackagePage =
-    body.includes('<title>EVS POS Package Selection Page</title>') ||
-    body.includes('Please confirm you are purchasing for the above premise') ||
+    body.includes("<title>EVS POS Package Selection Page</title>") ||
+    body.includes("Please confirm you are purchasing for the above premise") ||
     body.includes('action="/EVSWebPOS/selectOfferServlet"');
-  if (isSuccess) return 'success';
-  if (isMainPage) return 'session_or_login_failed';
-  if (isPackagePage) return 'stayed_on_package_page';
-  return 'unknown';
+  if (isSuccess) return "success";
+  if (isMainPage) return "session_or_login_failed";
+  if (isPackagePage) return "stayed_on_package_page";
+  return "unknown";
 }
 
-function cardPaymentPage({ n, e, netsMid, netsTxnRef, merchantTxnRef, amount, meterId, actionUrl, address='', balance='' }) {
-    const amtDisplay = Number(amount || 0).toFixed(2);
-    return `<!DOCTYPE html>
+function cardPaymentPage({
+  n,
+  e,
+  netsMid,
+  netsTxnRef,
+  merchantTxnRef,
+  amount,
+  meterId,
+  actionUrl,
+  address = "",
+  balance = "",
+}) {
+  const amtDisplay = Number(amount || 0).toFixed(2);
+  return `<!DOCTYPE html>
   <html lang="en">
   <head>
   <meta charset="UTF-8">
@@ -606,7 +630,7 @@ function cardPaymentPage({ n, e, netsMid, netsTxnRef, merchantTxnRef, amount, me
   
     const RSA_N = ${JSON.stringify(n)};
     const RSA_E = ${JSON.stringify(e)};
-    const ACTION_URL = ${JSON.stringify(actionUrl || 'https://www.enets.sg/enets2/PaymentListener.do')};
+    const ACTION_URL = ${JSON.stringify(actionUrl || "https://www.enets.sg/enets2/PaymentListener.do")};
     const MERCHANT_TXN_REF = ${JSON.stringify(merchantTxnRef)};
 
     // Replicate eNETS linebrk(str, maxLen)
@@ -747,7 +771,7 @@ const payload = new URLSearchParams({
   meterId: ${JSON.stringify(meterId)},
   address: ${JSON.stringify(address)},
   balance: ${JSON.stringify(balance)},
-  amount: ${JSON.stringify('S$ ' + amtDisplay)},
+  amount: ${JSON.stringify("S$ " + amtDisplay)},
 });
 
 const result = await fetch('/webapp/enets_pay', {
@@ -767,7 +791,7 @@ const q = new URLSearchParams({
   status: out.status || 'unknown',
   ref: out.merchantTxnRef || MERCHANT_TXN_REF || '',
   meterId: out.meterId || ${JSON.stringify(meterId)},
-  amount: out.amount || ${JSON.stringify('SGD ' + amtDisplay)},
+  amount: out.amount || ${JSON.stringify("SGD " + amtDisplay)},
   reason: out.reason || '',
   address: out.address || ${JSON.stringify(address)},
   balance: ${JSON.stringify(balance)},
@@ -804,150 +828,157 @@ autoBackspace('cvv', 'expYr');
 }
 
 function extractHiddenField(html, name) {
-    const m = String(html || '').match(
-      new RegExp(
-        `<input[^>]*\\bname=['"]${name}['"][^>]*\\bvalue=['"]([^'"]*)['"\\s]`,
-        'i'
-      ) ||
+  const m = String(html || "").match(
+    new RegExp(
+      `<input[^>]*\\bname=['"]${name}['"][^>]*\\bvalue=['"]([^'"]*)['"\\s]`,
+      "i",
+    ) ||
       new RegExp(
         `<input[^>]*\\bvalue=['"]([^'"]*)['"\\s][^>]*\\bname=['"]${name}['"]`,
-        'i'
-      )
-    );
-    return m?.[1] || null;
-  }
+        "i",
+      ),
+  );
+  return m?.[1] || null;
+}
 
-  function parseEnetsResult(html) {
-    const body = String(html || '');
-  
-    // Case 1: wrapper page containing window.open('/GW2/popup/u_receipt.jsp?...')
-    const match = body.match(/window\.open\(['"]([^'"]+)['"]/i);
-    if (match) {
-      let url = match[1];
-      url = url.replace(/\?status=([^&?]+)\?/, '?status=$1&');
-  
-      const qIndex = url.indexOf('?');
-      if (qIndex !== -1) {
-        const rawQuery = url.slice(qIndex + 1);
-        const params = {};
-        for (const pair of rawQuery.split('&')) {
-          const eq = pair.indexOf('=');
-          if (eq === -1) continue;
-          const key = pair.slice(0, eq);
-          const value = pair.slice(eq + 1);
-          params[key] = value;
-        }
-  
-        return {
-          status: params.status || 'unknown',
-          bankAuthId: params.bankAuthId || null,
-          merchantTxnRef: params.merchantTxnRef || null,
-          netsTxnRef: params.netsTxnRef || null,
-          txnDateTime: params.txnDateTime || null,
-          error: params.error || null,
-          deductedAmount: params.deductedAmount || null,
-          source: 'window_open',
-        };
+function parseEnetsResult(html) {
+  const body = String(html || "");
+
+  // Case 1: wrapper page containing window.open('/GW2/popup/u_receipt.jsp?...')
+  const match = body.match(/window\.open\(['"]([^'"]+)['"]/i);
+  if (match) {
+    let url = match[1];
+    url = url.replace(/\?status=([^&?]+)\?/, "?status=$1&");
+
+    const qIndex = url.indexOf("?");
+    if (qIndex !== -1) {
+      const rawQuery = url.slice(qIndex + 1);
+      const params = {};
+      for (const pair of rawQuery.split("&")) {
+        const eq = pair.indexOf("=");
+        if (eq === -1) continue;
+        const key = pair.slice(0, eq);
+        const value = pair.slice(eq + 1);
+        params[key] = value;
       }
-    }
-  
-    // Case 2: final receipt page HTML
-    const isReceiptPage =
-      /<title>\s*Receipt\s*<\/title>/i.test(body) ||
-      /u_receipt_/i.test(body);
-  
-    if (isReceiptPage) {
-      const liMatches = [...body.matchAll(/<li>\s*([^<]+?)\s*<\/li>/gi)].map(m => m[1].trim());
-      const message = liMatches.join(' | ') || null;
-  
-      let status = 'unknown';
-      if (/please contact merchant/i.test(body) || /fail|declin|reject/i.test(body)) {
-        status = 'failure';
-      } else if (/success|approved|completed/i.test(body)) {
-        status = 'success';
-      }
-  
+
       return {
-        status,
-        bankAuthId: null,
-        merchantTxnRef: null,
-        netsTxnRef: null,
-        txnDateTime: null,
-        error: message,
-        deductedAmount: null,
-        source: 'receipt_html',
+        status: params.status || "unknown",
+        bankAuthId: params.bankAuthId || null,
+        merchantTxnRef: params.merchantTxnRef || null,
+        netsTxnRef: params.netsTxnRef || null,
+        txnDateTime: params.txnDateTime || null,
+        error: params.error || null,
+        deductedAmount: params.deductedAmount || null,
+        source: "window_open",
       };
     }
-  
-    return null;
   }
 
-  async function getMeterSummary(meterDisplayName) {
-    const meterId = String(meterDisplayName || '').trim();
-    if (!meterId) {
-      return { address: null, credit_bal: null };
+  // Case 2: final receipt page HTML
+  const isReceiptPage =
+    /<title>\s*Receipt\s*<\/title>/i.test(body) || /u_receipt_/i.test(body);
+
+  if (isReceiptPage) {
+    const liMatches = [...body.matchAll(/<li>\s*([^<]+?)\s*<\/li>/gi)].map(
+      (m) => m[1].trim(),
+    );
+    const message = liMatches.join(" | ") || null;
+
+    let status = "unknown";
+    if (
+      /please contact merchant/i.test(body) ||
+      /fail|declin|reject/i.test(body)
+    ) {
+      status = "failure";
+    } else if (/success|approved|completed/i.test(body)) {
+      status = "success";
     }
-  
-    const commonHeaders = {
-      Accept: 'application/json, text/plain, */*',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Content-Type': 'application/json; charset=UTF-8',
-      Origin: 'https://cp2.evs.com.sg',
-      Referer: 'https://cp2.evs.com.sg/',
-      'User-Agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
-      Authorization: 'Bearer',
+
+    return {
+      status,
+      bankAuthId: null,
+      merchantTxnRef: null,
+      netsTxnRef: null,
+      txnDateTime: null,
+      error: message,
+      deductedAmount: null,
+      source: "receipt_html",
     };
-  
-    const [meterInfoResp, balResp] = await Promise.allSettled([
-      axios.post(
-        'https://ore.evs.com.sg/cp/get_meter_info',
-        {
-          request: {
-            meter_displayname: meterId,
-          },
-        },
-        {
-          headers: commonHeaders,
-          validateStatus: () => true,
-        }
-      ),
-      axios.post(
-        'https://ore.evs.com.sg/evs1/get_credit_bal',
-        {
-          svcClaimDto: {
-            username: meterId,
-            user_id: null,
-            svcName: 'oresvc',
-            endpoint: '/evs1/get_credit_bal',
-            scope: 'self',
-            target: 'meter.credit_balance',
-            operation: 'read',
-          },
-          request: {
-            meter_displayname: meterId,
-          },
-        },
-        {
-          headers: commonHeaders,
-          validateStatus: () => true,
-        }
-      ),
-    ]);
-  
-    let address = null;
-    let credit_bal = null;
-  
-    if (meterInfoResp.status === 'fulfilled' && meterInfoResp.value.status === 200) {
-      address = meterInfoResp.value.data?.meter_info?.address || null;
-    }
-  
-    if (balResp.status === 'fulfilled' && balResp.value.status === 200) {
-      credit_bal = balResp.value.data?.credit_bal ?? null;
-    }
-  
-    return { address, credit_bal };
   }
+
+  return null;
+}
+
+async function getMeterSummary(meterDisplayName) {
+  const meterId = String(meterDisplayName || "").trim();
+  if (!meterId) {
+    return { address: null, credit_bal: null };
+  }
+
+  const commonHeaders = {
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Content-Type": "application/json; charset=UTF-8",
+    Origin: "https://cp2.evs.com.sg",
+    Referer: "https://cp2.evs.com.sg/",
+    "User-Agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    Authorization: "Bearer",
+  };
+
+  const [meterInfoResp, balResp] = await Promise.allSettled([
+    axios.post(
+      "https://ore.evs.com.sg/cp/get_meter_info",
+      {
+        request: {
+          meter_displayname: meterId,
+        },
+      },
+      {
+        headers: commonHeaders,
+        validateStatus: () => true,
+      },
+    ),
+    axios.post(
+      "https://ore.evs.com.sg/evs1/get_credit_bal",
+      {
+        svcClaimDto: {
+          username: meterId,
+          user_id: null,
+          svcName: "oresvc",
+          endpoint: "/evs1/get_credit_bal",
+          scope: "self",
+          target: "meter.credit_balance",
+          operation: "read",
+        },
+        request: {
+          meter_displayname: meterId,
+        },
+      },
+      {
+        headers: commonHeaders,
+        validateStatus: () => true,
+      },
+    ),
+  ]);
+
+  let address = null;
+  let credit_bal = null;
+
+  if (
+    meterInfoResp.status === "fulfilled" &&
+    meterInfoResp.value.status === 200
+  ) {
+    address = meterInfoResp.value.data?.meter_info?.address || null;
+  }
+
+  if (balResp.status === "fulfilled" && balResp.value.status === 200) {
+    credit_bal = balResp.value.data?.credit_bal ?? null;
+  }
+
+  return { address, credit_bal };
+}
 
 async function createClient() {
   const jar = new CookieJar();
@@ -958,168 +989,213 @@ async function createClient() {
       validateStatus: () => true,
       maxRedirects: 0,
       headers: DEFAULT_HEADERS,
-    })
+    }),
   );
   return { client, jar };
 }
 
 async function runPurchaseFlow({ txtMtrId, txtAmount }) {
-  const result = { ok: false, stage: 'init' };
+  const result = { ok: false, stage: "init" };
 
-  if (!txtMtrId) return { ...result, error: 'Missing txtMtrId' };
-  if (txtAmount === undefined || txtAmount === null || txtAmount === '')
-    return { ...result, error: 'Missing txtAmount' };
+  if (!txtMtrId) return { ...result, error: "Missing txtMtrId" };
+  if (txtAmount === undefined || txtAmount === null || txtAmount === "")
+    return { ...result, error: "Missing txtAmount" };
 
-  const cleanedAmount = String(txtAmount).replace(/[^0-9.]/g, '');
+  const cleanedAmount = String(txtAmount).replace(/[^0-9.]/g, "");
   const amountDollars = Number(cleanedAmount);
   if (!Number.isFinite(amountDollars) || amountDollars <= 0) {
-    return { ...result, error: 'Invalid txtAmount' };
+    return { ...result, error: "Invalid txtAmount" };
   }
-  
+
   const amountCents = Math.round(amountDollars * 100);
   const { client, jar } = await createClient();
 
-    result.stage = 'evs_home';
+  result.stage = "evs_home";
   const step1 = await client.get(`${BASE}/EVSWebPOS/`);
 
-  result.stage = 'login';
+  result.stage = "login";
   const loginForm = new URLSearchParams({
     txtMtrId: String(txtMtrId),
-    btnLogin: 'Submit',
-    radRetail: '1',
+    btnLogin: "Submit",
+    radRetail: "1",
   }).toString();
 
   const step2 = await client.post(`${BASE}/EVSWebPOS/loginServlet`, loginForm, {
-    headers: { ...DEFAULT_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: {
+      ...DEFAULT_HEADERS,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
   });
 
   const loginResult = classifyLoginResponse(step2.data);
-  if (loginResult !== 'valid') {
-    const cookies = await jar.getCookies(BASE + '/EVSWebPOS/');
+  if (loginResult !== "valid") {
+    const cookies = await jar.getCookies(BASE + "/EVSWebPOS/");
     return {
-      ok: false, stage: 'login',
-      step1Status: step1.status, step2Status: step2.status,
+      ok: false,
+      stage: "login",
+      step1Status: step1.status,
+      step2Status: step2.status,
       loginResult,
-      cookieHeader: cookies.map(c => `${c.key}=${c.value}`).join('; '),
+      cookieHeader: cookies.map((c) => `${c.key}=${c.value}`).join("; "),
     };
   }
 
-  result.stage = 'select_offer';
+  result.stage = "select_offer";
   const selectForm = new URLSearchParams({
-    isDedicated: '0',
-    hidMinPur: '1',
-    hidMaxPur: '500',
-    hidSelected: '',
+    isDedicated: "0",
+    hidMinPur: "1",
+    hidMaxPur: "500",
+    hidSelected: "",
     txtAmount: String(amountDollars),
-    btnProceed: 'Proceed',
-    btnCancel: 'Cancel',
+    btnProceed: "Proceed",
+    btnCancel: "Cancel",
   }).toString();
 
-  const step3 = await client.post(`${BASE}/EVSWebPOS/selectOfferServlet`, selectForm, {
-    headers: { ...DEFAULT_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
-  });
+  const step3 = await client.post(
+    `${BASE}/EVSWebPOS/selectOfferServlet`,
+    selectForm,
+    {
+      headers: {
+        ...DEFAULT_HEADERS,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+    },
+  );
 
   const selectResult = classifySelectOfferResponse(step3.data);
-  const cookies = await jar.getCookies(BASE + '/EVSWebPOS/');
+  const cookies = await jar.getCookies(BASE + "/EVSWebPOS/");
 
-  if (selectResult !== 'success') {
+  if (selectResult !== "success") {
     return {
-      ok: false, stage: 'select_offer',
-      step1Status: step1.status, step2Status: step2.status, step3Status: step3.status,
-      loginResult, selectResult,
-      cookieHeader: cookies.map(c => `${c.key}=${c.value}`).join('; '),
+      ok: false,
+      stage: "select_offer",
+      step1Status: step1.status,
+      step2Status: step2.status,
+      step3Status: step3.status,
+      loginResult,
+      selectResult,
+      cookieHeader: cookies.map((c) => `${c.key}=${c.value}`).join("; "),
       preview: {
-        loginTitle: String(step2.data).match(/<title>(.*?)<\/title>/i)?.[1] || null,
-        selectTitle: String(step3.data).match(/<title>(.*?)<\/title>/i)?.[1] || null,
+        loginTitle:
+          String(step2.data).match(/<title>(.*?)<\/title>/i)?.[1] || null,
+        selectTitle:
+          String(step3.data).match(/<title>(.*?)<\/title>/i)?.[1] || null,
       },
     };
   }
 
-  result.stage = 'payment_servlet';
+  result.stage = "payment_servlet";
 
-  const step4 = await getFollowRedirects(client, `${BASE}/EVSWebPOS/paymentServlet`, {
-    params: { mode: '0', isDedicated: '1' },
-    headers: { ...DEFAULT_HEADERS, Referer: `${BASE}/EVSWebPOS/selectOfferServlet` },
-  });
+  const step4 = await getFollowRedirects(
+    client,
+    `${BASE}/EVSWebPOS/paymentServlet`,
+    {
+      params: { mode: "0", isDedicated: "1" },
+      headers: {
+        ...DEFAULT_HEADERS,
+        Referer: `${BASE}/EVSWebPOS/selectOfferServlet`,
+      },
+    },
+  );
 
   const merchant_txn_ref = extractMerchantTxnRef(step4.data);
   if (!merchant_txn_ref) {
     return {
-      ok: false, stage: 'payment_servlet',
-      step1Status: step1.status, step2Status: step2.status,
-      step3Status: step3.status, step4Status: step4.status,
-      loginResult, selectResult,
-      cookieHeader: cookies.map(c => `${c.key}=${c.value}`).join('; '),
-      error: 'merchant_txn_ref not found in paymentServlet HTML',
+      ok: false,
+      stage: "payment_servlet",
+      step1Status: step1.status,
+      step2Status: step2.status,
+      step3Status: step3.status,
+      step4Status: step4.status,
+      loginResult,
+      selectResult,
+      cookieHeader: cookies.map((c) => `${c.key}=${c.value}`).join("; "),
+      error: "merchant_txn_ref not found in paymentServlet HTML",
       upstream: {
-        paymentTitle: String(step4.data).match(/<title>(.*?)<\/title>/i)?.[1] || null,
-        paymentContentType: step4.headers?.['content-type'] || null,
+        paymentTitle:
+          String(step4.data).match(/<title>(.*?)<\/title>/i)?.[1] || null,
+        paymentContentType: step4.headers?.["content-type"] || null,
         paymentLocation: step4.headers?.location || null,
-        paymentPreview: String(step4.data || '').slice(0, 800),
+        paymentPreview: String(step4.data || "").slice(0, 800),
       },
     };
   }
 
-  result.stage = 'creditpayment';
+  result.stage = "creditpayment";
 
   const formBody = new URLSearchParams({
     amt: amountDollars.toFixed(2),
-    payment_mode: 'CC',
+    payment_mode: "CC",
     txn_amount: String(amountCents),
-    currency_code: 'SGD',
+    currency_code: "SGD",
     merchant_txn_ref: String(merchant_txn_ref),
-    submission_mode: 'B',
-    payment_type: 'SALE',
+    submission_mode: "B",
+    payment_type: "SALE",
   }).toString();
 
   const step5 = await axios.post(
-    'http://120.50.44.233/payment/creditpayment.jsp',
+    "http://120.50.44.233/payment/creditpayment.jsp",
     formBody,
     {
-      headers: { ...DEFAULT_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        ...DEFAULT_HEADERS,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
       validateStatus: () => true,
-    }
+    },
   );
 
   const enetsMessage = extractEnetsMessage(step5.data);
   if (!enetsMessage) {
     return {
-      ok: false, stage: 'enets_paymentlistener',
-      step1Status: step1.status, step2Status: step2.status,
-      step3Status: step3.status, step4Status: step4.status, step5Status: step5.status,
-      loginResult, selectResult, merchant_txn_ref,
-      cookieHeader: cookies.map(c => `${c.key}=${c.value}`).join('; '),
-      error: 'message not found in creditpayment.jsp HTML',
+      ok: false,
+      stage: "enets_paymentlistener",
+      step1Status: step1.status,
+      step2Status: step2.status,
+      step3Status: step3.status,
+      step4Status: step4.status,
+      step5Status: step5.status,
+      loginResult,
+      selectResult,
+      merchant_txn_ref,
+      cookieHeader: cookies.map((c) => `${c.key}=${c.value}`).join("; "),
+      error: "message not found in creditpayment.jsp HTML",
     };
   }
-  result.stage = 'enets_paymentlistener';
+  result.stage = "enets_paymentlistener";
 
-  const step6Body = new URLSearchParams({ message: String(enetsMessage) }).toString();
+  const step6Body = new URLSearchParams({
+    message: String(enetsMessage),
+  }).toString();
   const step6 = await axios.post(
-    'https://www.enets.sg/enets2/PaymentListener.do',
+    "https://www.enets.sg/enets2/PaymentListener.do",
     step6Body,
     {
       headers: {
         ...DEFAULT_HEADERS,
-        Origin: 'http://120.50.44.233',
-        Referer: 'http://120.50.44.233/',
-        'Content-Type': 'application/x-www-form-urlencoded',
+        Origin: "http://120.50.44.233",
+        Referer: "http://120.50.44.233/",
+        "Content-Type": "application/x-www-form-urlencoded",
       },
       validateStatus: () => true,
-    }
+    },
   );
 
-  const enetsHtml = String(step6.data || '');
-  const netsMid    = extractHiddenField(enetsHtml, 'netsMid');
-  const e          = extractHiddenField(enetsHtml, 'e');
-  const n          = extractHiddenField(enetsHtml, 'n');
-  const netsTxnRef = extractHiddenField(enetsHtml, 'netsTxnRef');
+  const enetsHtml = String(step6.data || "");
+  const netsMid = extractHiddenField(enetsHtml, "netsMid");
+  const e = extractHiddenField(enetsHtml, "e");
+  const n = extractHiddenField(enetsHtml, "n");
+  const netsTxnRef = extractHiddenField(enetsHtml, "netsTxnRef");
 
   return {
-    ok: true, stage: 'enets_paymentlistener',
-    step1Status: step1.status, step2Status: step2.status,
-    step3Status: step3.status, step4Status: step4.status,
-    step5Status: step5.status, step6Status: step6.status,
+    ok: true,
+    stage: "enets_paymentlistener",
+    step1Status: step1.status,
+    step2Status: step2.status,
+    step3Status: step3.status,
+    step4Status: step4.status,
+    step5Status: step5.status,
+    step6Status: step6.status,
     enetsBody: step6.data,
     enets: { netsMid, e, n, netsTxnRef },
   };
@@ -1127,245 +1203,298 @@ async function runPurchaseFlow({ txtMtrId, txtAmount }) {
 
 // ── Existing routes ───────────────────────────────────────────────────────────
 
-app.post('/purchase_flow', async (req, res) => {
+app.post("/purchase_flow", async (req, res) => {
   try {
-    console.log(req.body)
+    console.log(req.body);
     const out = await runPurchaseFlow(req.body || {});
-    console.log("OUT: ", out)
-    const status = out?.error && (out.error.includes('Missing') || out.error.includes('Invalid')) ? 400 : 200;
+    console.log("OUT: ", out);
+    const status =
+      out?.error &&
+      (out.error.includes("Missing") || out.error.includes("Invalid"))
+        ? 400
+        : 200;
     return res.status(status).json(out);
   } catch (error) {
-    return res.status(500).json({ error: error.message, responseStatus: error.response?.status || null });
+    return res
+      .status(500)
+      .json({
+        error: error.message,
+        responseStatus: error.response?.status || null,
+      });
   }
 });
 
-app.get('/purchase_flow/enets', async (req, res) => {
+app.get("/purchase_flow/enets", async (req, res) => {
   try {
     const out = await runPurchaseFlow(req.query || {});
     if (!out?.ok || !out?.enetsBody) return res.status(502).json(out);
-    const html = ensureBaseHref(out.enetsBody, 'https://www.enets.sg/');
-    res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+    const html = ensureBaseHref(out.enetsBody, "https://www.enets.sg/");
+    res.setHeader("Content-Type", "text/html; charset=UTF-8");
     return res.status(200).send(html);
   } catch (error) {
     return res.status(500).send(String(error?.message || error));
   }
 });
 
-app.get('/webapp/result', (req, res) => {
-    const {
-      status = 'unknown',
-      ref = '',
-      meterId = '',
-      amount = '',
-      reason = '',
-      address = '',
-      balance = '',
-    } = req.query;
-  
-    res.setHeader('Content-Type', 'text/html; charset=UTF-8');
-    return res.send(
-      renderFinalResultPage({
-        status,
-        merchantTxnRef: ref,
-        meterId,
-        amount,
-        reason,
-        address,
-        balance,
-      })
-    );
-  });
+app.get("/webapp/result", (req, res) => {
+  const {
+    status = "unknown",
+    ref = "",
+    meterId = "",
+    amount = "",
+    reason = "",
+    address = "",
+    balance = "",
+  } = req.query;
 
-  app.get('/webapp/bootstrap', async (req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=UTF-8");
+  return res.send(
+    renderFinalResultPage({
+      status,
+      merchantTxnRef: ref,
+      meterId,
+      amount,
+      reason,
+      address,
+      balance,
+    }),
+  );
+});
+
+app.get("/webapp/bootstrap", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 
   if (!txtMtrId || !txtAmount) {
     return res.status(400).json({
       ok: false,
-      stage: 'init',
-      error: 'Missing meter ID or amount.',
+      stage: "init",
+      error: "Missing meter ID or amount.",
     });
   }
 
   try {
     const [out, meterSummary] = await Promise.all([
-        runPurchaseFlow({ txtMtrId, txtAmount }),
-        getMeterSummary(txtMtrId),
-      ]);
+      runPurchaseFlow({ txtMtrId, txtAmount }),
+      getMeterSummary(txtMtrId),
+    ]);
 
-      track('bootstrap_started', { meterId: txtMtrId, amount: txtAmount });
+    track("bootstrap_started", { meterId: txtMtrId, amount: txtAmount });
 
     if (!out?.ok) {
-        track('bootstrap_failed', {
-            meterId: txtMtrId,
-            amount: txtAmount,
-            stage: out.stage,
-            error: out.error || null,
-          });
-      return res.status(502).json(out);
-    }
-
-    track('bootstrap_succeeded', {
+      track("bootstrap_failed", {
         meterId: txtMtrId,
         amount: txtAmount,
         stage: out.stage,
+        error: out.error || null,
       });
+      return res.status(502).json(out);
+    }
 
-    const enetsHtml = String(out.enetsBody || '');
+    track("bootstrap_succeeded", {
+      meterId: txtMtrId,
+      amount: txtAmount,
+      stage: out.stage,
+    });
+
+    const enetsHtml = String(out.enetsBody || "");
     const $ = cheerio.load(enetsHtml);
 
-    const netsMid        = extractHiddenField(enetsHtml, 'netsMid');
-    const e              = extractHiddenField(enetsHtml, 'e');
-    const n              = extractHiddenField(enetsHtml, 'n');
-    const netsTxnRef     = extractHiddenField(enetsHtml, 'netsTxnRef');
-    const merchantTxnRef = extractHiddenField(enetsHtml, 'merchant_txn_ref') || extractMerchantTxnRef(enetsHtml);
-    const rawActionUrl   = $('form').first().attr('action') || '/enets2/PaymentListener.do';
-    const actionUrl      = new URL(rawActionUrl, 'https://www.enets.sg').toString();
+    const netsMid = extractHiddenField(enetsHtml, "netsMid");
+    const e = extractHiddenField(enetsHtml, "e");
+    const n = extractHiddenField(enetsHtml, "n");
+    const netsTxnRef = extractHiddenField(enetsHtml, "netsTxnRef");
+    const merchantTxnRef =
+      extractHiddenField(enetsHtml, "merchant_txn_ref") ||
+      extractMerchantTxnRef(enetsHtml);
+    const rawActionUrl =
+      $("form").first().attr("action") || "/enets2/PaymentListener.do";
+    const actionUrl = new URL(rawActionUrl, "https://www.enets.sg").toString();
 
     if (!n || !e || !netsMid || !netsTxnRef) {
-        return res.status(502).json({ ok: false, error: 'Missing eNETS key fields.' });
-      }
-  
-      const params = new URLSearchParams({
-        txtMtrId,
-        txtAmount,
-        address:      meterSummary.address    || '',
-        balance:      meterSummary.credit_bal ?? '',
-        n, e, netsMid, netsTxnRef,
-        merchantTxnRef: merchantTxnRef || '',
-        actionUrl,
-      });
- 
-      return res.status(200).json({
-        ok: true,
-        stage: out.stage,
-        redirectUrl: '/webapp/pay?' + params.toString(),
-      });
-    } catch (err) {
-      return res.status(500).json({ ok: false, stage: 'init', error: err.message || 'Unknown error' });
+      return res
+        .status(502)
+        .json({ ok: false, error: "Missing eNETS key fields." });
     }
-  });
 
-app.get('/evs/merchant_txn_ref', async (req, res) => {
+    const params = new URLSearchParams({
+      txtMtrId,
+      txtAmount,
+      address: meterSummary.address || "",
+      balance: meterSummary.credit_bal ?? "",
+      n,
+      e,
+      netsMid,
+      netsTxnRef,
+      merchantTxnRef: merchantTxnRef || "",
+      actionUrl,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      stage: out.stage,
+      redirectUrl: "/webapp/pay?" + params.toString(),
+    });
+  } catch (err) {
+    return res
+      .status(500)
+      .json({
+        ok: false,
+        stage: "init",
+        error: err.message || "Unknown error",
+      });
+  }
+});
+
+app.get("/evs/merchant_txn_ref", async (req, res) => {
   try {
-    const { mode = '0', isDedicated = '1', jsessionid } = req.query;
-    const cookieFromHeader = req.header('cookie') || '';
-    const cookieHeader = jsessionid && String(jsessionid).trim()
-      ? `JSESSIONID=${String(jsessionid).trim()}` : cookieFromHeader;
+    const { mode = "0", isDedicated = "1", jsessionid } = req.query;
+    const cookieFromHeader = req.header("cookie") || "";
+    const cookieHeader =
+      jsessionid && String(jsessionid).trim()
+        ? `JSESSIONID=${String(jsessionid).trim()}`
+        : cookieFromHeader;
     const response = await axios.get(`${BASE}/EVSWebPOS/paymentServlet`, {
       params: { mode: String(mode), isDedicated: String(isDedicated) },
-      headers: { ...DEFAULT_HEADERS, ...(cookieHeader ? { Cookie: cookieHeader } : {}), Referer: `${BASE}/EVSWebPOS/selectOfferServlet` },
+      headers: {
+        ...DEFAULT_HEADERS,
+        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+        Referer: `${BASE}/EVSWebPOS/selectOfferServlet`,
+      },
       validateStatus: () => true,
       maxRedirects: 5,
     });
-    if (response.status !== 200) return res.status(502).json({ error: 'Upstream returned non-200', upstreamStatus: response.status });
+    if (response.status !== 200)
+      return res
+        .status(502)
+        .json({
+          error: "Upstream returned non-200",
+          upstreamStatus: response.status,
+        });
     const merchant_txn_ref = extractMerchantTxnRef(response.data);
     if (!merchant_txn_ref) {
       return res.status(502).json({
-        error: 'merchant_txn_ref not found in upstream HTML',
+        error: "merchant_txn_ref not found in upstream HTML",
         upstreamStatus: response.status,
-        upstreamTitle: String(response.data).match(/<title>(.*?)<\/title>/i)?.[1] || null,
-        upstreamContentType: response.headers?.['content-type'] || null,
-        upstreamPreview: String(response.data || '').slice(0, 800),
+        upstreamTitle:
+          String(response.data).match(/<title>(.*?)<\/title>/i)?.[1] || null,
+        upstreamContentType: response.headers?.["content-type"] || null,
+        upstreamPreview: String(response.data || "").slice(0, 800),
       });
     }
     return res.status(200).json({ merchant_txn_ref });
   } catch (error) {
-    return res.status(500).json({ error: error.message, responseStatus: error.response?.status || null });
+    return res
+      .status(500)
+      .json({
+        error: error.message,
+        responseStatus: error.response?.status || null,
+      });
   }
 });
 
-app.post('/webapp/enets_pay', express.urlencoded({ extended: false, limit: '10mb' }), async (req, res) => {
+app.post(
+  "/webapp/enets_pay",
+  express.urlencoded({ extended: false, limit: "10mb" }),
+  async (req, res) => {
     try {
       const body = new URLSearchParams(req.body).toString();
-  
-      track('payment_attempted', {
+
+      track("payment_attempted", {
         meterId: req.body.meterId,
         amount: req.body.amount,
         merchantTxnRef: req.body.merchantTxnRef,
-      });   
+      });
       const enetsResp = await axios.post(
-        'https://www.enets.sg/GW2/uCredit/pay',
+        "https://www.enets.sg/GW2/uCredit/pay",
         body,
         {
           headers: {
             ...DEFAULT_HEADERS,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            Origin: 'https://www.enets.sg',
-            Referer: 'https://www.enets.sg/enets2/PaymentListener.do',
+            "Content-Type": "application/x-www-form-urlencoded",
+            Origin: "https://www.enets.sg",
+            Referer: "https://www.enets.sg/enets2/PaymentListener.do",
           },
           validateStatus: () => true,
           maxRedirects: 5,
-        }
+        },
       );
-  
-      const html = String(enetsResp.data || '');
-  
+
+      const html = String(enetsResp.data || "");
+
       // Preferred path: capture the callback form/message and replay it to EVS
       const evsCb = extractEvsCallbackFromHtml(html);
-  
+
       if (evsCb) {
         const jsessionid =
           req.body.jsessionid ||
           req.headers.cookie?.match(/(?:^|;\s*)JSESSIONID=([^;]+)/i)?.[1] ||
           null;
-  
+
         const evsResult = await postResultToEvs({
           status: evsCb.status,
           id: evsCb.id,
           message: evsCb.message,
           jsessionid,
         });
-  
+
         const parsed = evsResult.parsed || {};
         const normalized = normalizeFinalOutcome(parsed);
 
-        
-        track('payment_result', {
-            meterId: req.body.meterId,
-            amount: req.body.amount,
-            merchantTxnRef: normalized.merchantTxnRef || '',
-            status: normalized.status,
-            reason: normalized.reason || '',
-          });
-          
-return res.status(200).json({
-    ok: true,
-    source: 'evs_transsum',
-    status: normalized.status || 'unknown',
-    merchantTxnRef: normalized.merchantTxnRef || evsCb.id || req.body.merchantTxnRef || '',
-    meterId: req.body.meterId || normalized.meterId || '',
-    address: req.body.address || '',
-    balance: req.body.balance || '',
-    amount: req.body.amount || normalized.amount || '',
-    reason: normalized.reason || '',
-    upstreamStatus: {
-      enets: enetsResp.status,
-      evs: evsResult.upstreamStatus,
-    },
-  });
+        track("payment_result", {
+          meterId: req.body.meterId,
+          amount: req.body.amount,
+          merchantTxnRef: normalized.merchantTxnRef || "",
+          status: normalized.status,
+          reason: normalized.reason || "",
+        });
+
+        return res.status(200).json({
+          ok: true,
+          source: "evs_transsum",
+          status: normalized.status || "unknown",
+          merchantTxnRef:
+            normalized.merchantTxnRef ||
+            evsCb.id ||
+            req.body.merchantTxnRef ||
+            "",
+          meterId: req.body.meterId || normalized.meterId || "",
+          address: req.body.address || "",
+          balance: req.body.balance || "",
+          amount: req.body.amount || normalized.amount || "",
+          reason: normalized.reason || "",
+          upstreamStatus: {
+            enets: enetsResp.status,
+            evs: evsResult.upstreamStatus,
+          },
+        });
       }
-  
+
       // Fallback: old receipt parser if callback form is not found
       const receipt = parseEnetsResult(html);
-  
+
       if (!receipt) {
         return res.status(502).json({
           ok: false,
-          error: 'Could not parse eNETS response or EVS callback form',
+          error: "Could not parse eNETS response or EVS callback form",
           preview: html.slice(0, 1200),
         });
       }
-  
-      const ok = receipt.status === 'success';
-  
+
+      const ok = receipt.status === "success";
+
       return res.status(200).json({
         ok: true,
-        source: 'enets_receipt_fallback',
+        source: "enets_receipt_fallback",
         status: receipt.status,
-        merchantTxnRef: receipt.merchantTxnRef || req.body.merchantTxnRef || req.body.merchant_txn_ref || '',
-        amount: receipt.deductedAmount || '',
-        reason: ok ? 'Payment completed.' : (receipt.error || 'Transaction failed.'),
+        merchantTxnRef:
+          receipt.merchantTxnRef ||
+          req.body.merchantTxnRef ||
+          req.body.merchant_txn_ref ||
+          "",
+        amount: receipt.deductedAmount || "",
+        reason: ok
+          ? "Payment completed."
+          : receipt.error || "Transaction failed.",
       });
     } catch (err) {
       return res.status(500).json({
@@ -1373,145 +1502,218 @@ return res.status(200).json({
         error: err.message,
       });
     }
-  });
+  },
+);
 
-  app.get('/webapp/pay', (req, res) => {
-    const { txtMtrId, txtAmount, address = '', balance = '',
-            n, e, netsMid, netsTxnRef, merchantTxnRef, actionUrl } = req.query;
-  
-    if (!txtMtrId || !txtAmount || !n || !e || !netsMid || !netsTxnRef) {
-      return res.status(400).send(errorPage('Missing required payment parameters.'));
-    }
-  
-    res.setHeader('Content-Type', 'text/html; charset=UTF-8');
-    return res.send(cardPaymentPage({
-      n, e, netsMid, netsTxnRef,
-      merchantTxnRef: merchantTxnRef || '',
-      actionUrl: actionUrl || 'https://www.enets.sg/enets2/PaymentListener.do',
+app.get("/webapp/pay", (req, res) => {
+  const {
+    txtMtrId,
+    txtAmount,
+    address = "",
+    balance = "",
+    n,
+    e,
+    netsMid,
+    netsTxnRef,
+    merchantTxnRef,
+    actionUrl,
+  } = req.query;
+
+  if (!txtMtrId || !txtAmount || !n || !e || !netsMid || !netsTxnRef) {
+    return res
+      .status(400)
+      .send(errorPage("Missing required payment parameters."));
+  }
+
+  res.setHeader("Content-Type", "text/html; charset=UTF-8");
+  return res.send(
+    cardPaymentPage({
+      n,
+      e,
+      netsMid,
+      netsTxnRef,
+      merchantTxnRef: merchantTxnRef || "",
+      actionUrl: actionUrl || "https://www.enets.sg/enets2/PaymentListener.do",
       amount: txtAmount,
       meterId: txtMtrId,
       address,
       balance,
-    }));
-  });
+    }),
+  );
+});
 
-app.post('/evs/creditpayment', async (req, res) => {
+app.post("/evs/creditpayment", async (req, res) => {
   try {
-    const { mode = '0', isDedicated = '1', jsessionid, amt = '0.01', payment_mode = 'CC',
-      txn_amount = '1', currency_code = 'SGD', submission_mode = 'B', payment_type = 'SALE' } = req.body || {};
-    const cookieFromHeader = req.header('cookie') || '';
-    const cookieHeader = jsessionid && String(jsessionid).trim()
-      ? `JSESSIONID=${String(jsessionid).trim()}` : cookieFromHeader;
+    const {
+      mode = "0",
+      isDedicated = "1",
+      jsessionid,
+      amt = "0.01",
+      payment_mode = "CC",
+      txn_amount = "1",
+      currency_code = "SGD",
+      submission_mode = "B",
+      payment_type = "SALE",
+    } = req.body || {};
+    const cookieFromHeader = req.header("cookie") || "";
+    const cookieHeader =
+      jsessionid && String(jsessionid).trim()
+        ? `JSESSIONID=${String(jsessionid).trim()}`
+        : cookieFromHeader;
     const evsResp = await axios.get(`${BASE}/EVSWebPOS/paymentServlet`, {
       params: { mode: String(mode), isDedicated: String(isDedicated) },
-      headers: { ...DEFAULT_HEADERS, ...(cookieHeader ? { Cookie: cookieHeader } : {}), Referer: `${BASE}/EVSWebPOS/selectOfferServlet` },
+      headers: {
+        ...DEFAULT_HEADERS,
+        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+        Referer: `${BASE}/EVSWebPOS/selectOfferServlet`,
+      },
       validateStatus: () => true,
       maxRedirects: 5,
     });
-    if (evsResp.status !== 200) return res.status(502).json({ error: 'EVS paymentServlet returned non-200', upstreamStatus: evsResp.status });
+    if (evsResp.status !== 200)
+      return res
+        .status(502)
+        .json({
+          error: "EVS paymentServlet returned non-200",
+          upstreamStatus: evsResp.status,
+        });
     const merchant_txn_ref = extractMerchantTxnRef(evsResp.data);
     if (!merchant_txn_ref) {
       return res.status(502).json({
-        error: 'merchant_txn_ref not found in EVS HTML',
+        error: "merchant_txn_ref not found in EVS HTML",
         upstreamStatus: evsResp.status,
-        upstreamTitle: String(evsResp.data).match(/<title>(.*?)<\/title>/i)?.[1] || null,
-        upstreamContentType: evsResp.headers?.['content-type'] || null,
-        upstreamPreview: String(evsResp.data || '').slice(0, 800),
+        upstreamTitle:
+          String(evsResp.data).match(/<title>(.*?)<\/title>/i)?.[1] || null,
+        upstreamContentType: evsResp.headers?.["content-type"] || null,
+        upstreamPreview: String(evsResp.data || "").slice(0, 800),
       });
     }
-    const formBody = new URLSearchParams({ amt: String(amt), payment_mode: String(payment_mode),
-      txn_amount: String(txn_amount), currency_code: String(currency_code),
-      merchant_txn_ref: String(merchant_txn_ref), submission_mode: String(submission_mode),
-      payment_type: String(payment_type) }).toString();
-    const payResp = await axios.post('http://120.50.44.233/payment/creditpayment.jsp', formBody, {
-      headers: { ...DEFAULT_HEADERS, 'Content-Type': 'application/x-www-form-urlencoded' },
-      validateStatus: () => true,
-    });
-    return res.status(200).json({ merchant_txn_ref, paymentUpstreamStatus: payResp.status,
-      paymentContentType: payResp.headers?.['content-type'] || null,
-      paymentBody: typeof payResp.data === 'string' ? payResp.data : payResp.data });
+    const formBody = new URLSearchParams({
+      amt: String(amt),
+      payment_mode: String(payment_mode),
+      txn_amount: String(txn_amount),
+      currency_code: String(currency_code),
+      merchant_txn_ref: String(merchant_txn_ref),
+      submission_mode: String(submission_mode),
+      payment_type: String(payment_type),
+    }).toString();
+    const payResp = await axios.post(
+      "http://120.50.44.233/payment/creditpayment.jsp",
+      formBody,
+      {
+        headers: {
+          ...DEFAULT_HEADERS,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        validateStatus: () => true,
+      },
+    );
+    return res
+      .status(200)
+      .json({
+        merchant_txn_ref,
+        paymentUpstreamStatus: payResp.status,
+        paymentContentType: payResp.headers?.["content-type"] || null,
+        paymentBody:
+          typeof payResp.data === "string" ? payResp.data : payResp.data,
+      });
   } catch (error) {
-    return res.status(500).json({ error: error.message, responseStatus: error.response?.status || null });
+    return res
+      .status(500)
+      .json({
+        error: error.message,
+        responseStatus: error.response?.status || null,
+      });
   }
 });
 
 // ── NEW: Telegram WebApp route ────────────────────────────────────────────────
 // Serves a loading page, runs the full purchase flow server-side,
 // then renders the eNETS payment page directly inside the WebApp.
-app.get('/webapp', async (req, res) => {
+app.get("/webapp", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 
   if (!txtMtrId || !txtAmount) {
-    return res.status(400).send(errorPage('Missing meter ID or amount.'));
+    return res.status(400).send(errorPage("Missing meter ID or amount."));
   }
 
   try {
     const meterSummary = await getMeterSummary(txtMtrId);
-    track('webapp_opened', {
-        meterId: txtMtrId,
-        amount: txtAmount,
-        ua: req.get('user-agent'),
-      });
+    track("webapp_opened", {
+      meterId: txtMtrId,
+      amount: txtAmount,
+      ua: req.get("user-agent"),
+    });
     return res.status(200).send(loadingPage(txtMtrId, txtAmount, meterSummary));
   } catch (err) {
-    return res.status(200).send(
-      loadingPage(txtMtrId, txtAmount, { address: null, credit_bal: null })
-    );
+    return res
+      .status(200)
+      .send(
+        loadingPage(txtMtrId, txtAmount, { address: null, credit_bal: null }),
+      );
   }
 });
 
-app.post('/webapp/transsum', express.urlencoded({ extended: false }), async (req, res) => {
+app.post(
+  "/webapp/transsum",
+  express.urlencoded({ extended: false }),
+  async (req, res) => {
     try {
-      const { status = '0', id } = req.query;
+      const { status = "0", id } = req.query;
       const { message } = req.body || {};
-  
+
       if (!message || !id) {
-        return res.status(400).send(errorPage('Missing transaction return data.'));
+        return res
+          .status(400)
+          .send(errorPage("Missing transaction return data."));
       }
-  
+
       const formBody = new URLSearchParams({
         message: String(message),
       }).toString();
-  
+
       const evsResp = await axios.post(
         `${BASE}/EVSWebPOS/transSumServlet?status=${encodeURIComponent(String(status))}&id=${encodeURIComponent(String(id))}`,
         formBody,
         {
           headers: {
             ...DEFAULT_HEADERS,
-            Origin: 'https://www.enets.sg',
-            Referer: 'https://www.enets.sg/',
-            'Content-Type': 'application/x-www-form-urlencoded',
+            Origin: "https://www.enets.sg",
+            Referer: "https://www.enets.sg/",
+            "Content-Type": "application/x-www-form-urlencoded",
           },
           validateStatus: () => true,
-        }
+        },
       );
-  
+
       const parsed = parseEvsTransactionSummary(evsResp.data);
-  
-      res.setHeader('Content-Type', 'text/html; charset=UTF-8');
+
+      res.setHeader("Content-Type", "text/html; charset=UTF-8");
       const q = new URLSearchParams({
-        status: parsed.status || 'unknown',
-        ref: parsed.merchantTxnRef || '',
-        meterId: parsed.meterId || '',
-        amount: parsed.amount || '',
-        reason: parsed.reason || '',
-        address: parsed.address || '',
-        balance: parsed.balance ?? '',
+        status: parsed.status || "unknown",
+        ref: parsed.merchantTxnRef || "",
+        meterId: parsed.meterId || "",
+        amount: parsed.amount || "",
+        reason: parsed.reason || "",
+        address: parsed.address || "",
+        balance: parsed.balance ?? "",
       }).toString();
-      
+
       return res.redirect(`/webapp/result?${q}`);
     } catch (err) {
-      return res.status(500).send(
-        errorPage(err.message || 'Failed to process transaction result.')
-      );
+      return res
+        .status(500)
+        .send(
+          errorPage(err.message || "Failed to process transaction result."),
+        );
     }
-  });
+  },
+);
 // ── HTML helpers ──────────────────────────────────────────────────────────────
 
 function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
-    const amtDisplay = Number(txtAmount).toFixed(2);
-    const balanceDisplay =
+  const amtDisplay = Number(txtAmount).toFixed(2);
+  const balanceDisplay =
     meterInfo.credit_bal !== undefined && meterInfo.credit_bal !== null
       ? Number(meterInfo.credit_bal).toFixed(2)
       : null;
@@ -1675,14 +1877,14 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
   </div>
 
     ${
-    meterInfo.address
-      ? `
+      meterInfo.address
+        ? `
   <div class="detail-row">
     <span class="detail-label">Address</span>
     <span class="detail-value">${escHtml(meterInfo.address)}</span>
   </div>`
-      : ''
-  }
+        : ""
+    }
 
   ${
     balanceDisplay !== null
@@ -1691,7 +1893,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
     <span class="detail-label">Current Balance</span>
     <span class="detail-value">SGD ${escHtml(balanceDisplay)}</span>
   </div>`
-      : ''
+      : ""
   }
   
   <div class="detail-row">
@@ -1782,12 +1984,15 @@ function errorPage(msg) {
 }
 
 function escHtml(str) {
-  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.listen(3000, () => {
-  console.log('Server running on http://localhost:3000');
+  console.log("Server running on http://localhost:3000");
 });
-

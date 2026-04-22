@@ -612,6 +612,21 @@ function cardPaymentPage({ n, e, netsMid, netsTxnRef, merchantTxnRef, amount, me
       return out + str.substring(i);
     }
 
+    function autoBackspace(currentId, prevId) {
+  const el = document.getElementById(currentId);
+  const prev = document.getElementById(prevId);
+
+  el.addEventListener('keydown', function (e) {
+    if (e.key === 'Backspace' && !this.value) {
+      prev?.focus();
+
+      // optional: move cursor to end
+      const len = prev?.value?.length ?? 0;
+      prev?.setSelectionRange?.(len, len);
+    }
+  });
+}
+
     function autoNext(currentId, nextId, maxLen) {
     const el = document.getElementById(currentId);
     const next = document.getElementById(nextId);
@@ -767,10 +782,20 @@ window.location.href = '/webapp/result?' + q;
       let v = this.value.replace(/\\D/g,'').substring(0,16);
       this.value = v.replace(/(\\d{4})(?=\\d)/g,'$1 ');
     });
+
+    document.getElementById('cardNo').addEventListener('keydown', function (e) {
+  const raw = this.value.replace(/\D/g, '');
+  if (e.key === 'Backspace' && raw.length === 0) {
+    document.getElementById('cardEmail')?.focus();
+  }
+});
 // Auto jump between fields
 autoNext('cardNo', 'expMth', 16);
 autoNext('expMth', 'expYr', 2);
 autoNext('expYr', 'cvv', 2);
+
+autoBackspace('expYr', 'expMth');
+autoBackspace('cvv', 'expYr');
   </script>
   </body>
   </html>`;

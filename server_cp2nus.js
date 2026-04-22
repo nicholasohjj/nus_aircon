@@ -5,7 +5,7 @@ const { wrapper } = require('axios-cookiejar-support');
 const { CookieJar } = require('tough-cookie');
 const cheerio = require('cheerio');
 const valid = require('card-validator');
-require('./bot');
+// require('./bot');
 
 const app = express();
 
@@ -22,14 +22,6 @@ const DEFAULT_HEADERS = {
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36',
   'Upgrade-Insecure-Requests': '1',
 };
-
-function track(event, data = {}) {
-    console.log(JSON.stringify({
-      ts: new Date().toISOString(),
-      event,
-      ...data,
-    }));
-  }
 
 function htmlDecode(str) {
     return String(str || '')
@@ -1193,23 +1185,9 @@ app.get('/webapp/result', (req, res) => {
         getMeterSummary(txtMtrId),
       ]);
 
-      track('bootstrap_started', { meterId: txtMtrId, amount: txtAmount });
-
     if (!out?.ok) {
-        track('bootstrap_failed', {
-            meterId: txtMtrId,
-            amount: txtAmount,
-            stage: out.stage,
-            error: out.error || null,
-          });
       return res.status(502).json(out);
     }
-
-    track('bootstrap_succeeded', {
-        meterId: txtMtrId,
-        amount: txtAmount,
-        stage: out.stage,
-      });
 
     const enetsHtml = String(out.enetsBody || '');
     const $ = cheerio.load(enetsHtml);
@@ -1279,11 +1257,6 @@ app.post('/webapp/enets_pay', express.urlencoded({ extended: false, limit: '10mb
     try {
       const body = new URLSearchParams(req.body).toString();
   
-      track('payment_attempted', {
-        meterId: req.body.meterId,
-        amount: req.body.amount,
-        merchantTxnRef: req.body.merchantTxnRef,
-      });   
       const enetsResp = await axios.post(
         'https://www.enets.sg/GW2/uCredit/pay',
         body,
@@ -1321,14 +1294,6 @@ app.post('/webapp/enets_pay', express.urlencoded({ extended: false, limit: '10mb
         const normalized = normalizeFinalOutcome(parsed);
 
         
-        track('payment_result', {
-            meterId: req.body.meterId,
-            amount: req.body.amount,
-            merchantTxnRef: normalized.merchantTxnRef || '',
-            status: normalized.status,
-            reason: normalized.reason || '',
-          });
-          
 return res.status(200).json({
     ok: true,
     source: 'evs_transsum',
@@ -1447,11 +1412,6 @@ app.get('/webapp', async (req, res) => {
 
   try {
     const meterSummary = await getMeterSummary(txtMtrId);
-    track('webapp_opened', {
-        meterId: txtMtrId,
-        amount: txtAmount,
-        ua: req.get('user-agent'),
-      });
     return res.status(200).send(loadingPage(txtMtrId, txtAmount, meterSummary));
   } catch (err) {
     return res.status(200).send(

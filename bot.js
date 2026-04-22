@@ -8,6 +8,14 @@ if (!TOKEN) throw new Error('TELEGRAM_BOT_TOKEN env var is required');
 
 const bot = new Telegraf(TOKEN);
 
+function track(event, data = {}) {
+    console.log(JSON.stringify({
+      ts: new Date().toISOString(),
+      event,
+      ...data,
+    }));
+  }
+
 function isHttpsUrl(url) {
   try {
     const u = new URL(String(url));
@@ -46,7 +54,7 @@ function mainKeyboard() {
 
 function hostelKeyboard() {
   return Markup.keyboard([
-    ['🏠 U-Town RCs (cp2)', '🏠 RVRC (WIP)'],
+    ['🏠 UTown RCs (cp2)', '🏠 RVRC (WIP)'],
     ['❌ Cancel']
   ]).resize();
 }
@@ -82,6 +90,7 @@ bot.hears('⚡ Top Up', async ctx => {
 
 bot.start(async ctx => {
   const chatId = ctx.chat?.id;
+  track('bot_start', { chatId });
   if (chatId) resetSession(chatId);
 
   return ctx.reply(
@@ -92,6 +101,7 @@ bot.start(async ctx => {
 
 bot.command('topup', async ctx => {
   const chatId = ctx.chat?.id;
+  track('topup_command', { chatId })
   if (!chatId) return;
 
   startTopUp(chatId);
@@ -123,20 +133,22 @@ bot.on('text', async ctx => {
   const session = getSession(chatId);
 
   if (session.stage === 'awaiting_hostel') {
-    if (text === '🏠 U-Town RCs (cp2)') {
+    if (text === '🏠 UTown RCs (cp2)') {
       session.hostel = HOSTELS.UTOWN;
       session.stage = 'awaiting_meter_id';
+      track('hostel_selected', {chatId, hostel: 'utown'})
       return ctx.reply('🔌 Please enter your 8-digit Meter ID:', mainKeyboard());
     }
 
     if (text === '🏠 RVRC (WIP)') {
       session.hostel = HOSTELS.RVRC;
       session.stage = 'awaiting_meter_id';
+      track('hostel_selected', {chatId, hostel: 'rvrc'})
       return ctx.reply('🔌 Please enter your 8-digit Meter ID:', mainKeyboard());
     }
 
     return ctx.reply(
-      '⚠️ Please choose either U-Town RCs if you use cp2.evs.com.sg or RVRC if you use cp2nus.evs.com.sg.',
+      '⚠️ Please choose either UTown RCs if you use cp2.evs.com.sg or RVRC if you use cp2nus.evs.com.sg.',
       hostelKeyboard()
     );
   }
@@ -166,6 +178,14 @@ bot.on('text', async ctx => {
 
     session.amountDollars = amountDollars;
     session.amountCents = amountCents;
+
+    track('amount_accepted', {
+        chatId,
+        hostel: session.hostel,
+        meterId: session.txtMtrId,
+        amount: amountDollars,
+      });
+      
     session.stage = 'idle';
 
     const webAppPath = getWebAppPath(session.hostel);
@@ -174,9 +194,16 @@ bot.on('text', async ctx => {
       `&txtAmount=${encodeURIComponent(session.amountDollars)}`;
     console.log('🌐 WebApp URL =', webAppUrl);
     const hostelLabel =
-      session.hostel === HOSTELS.RVRC ? 'RVRC/cp2nus (WIP)' : 'U-Town RCs (cp2)';
+      session.hostel === HOSTELS.RVRC ? 'RVRC/cp2nus (WIP)' : 'UTown RCs (cp2)';
 
     if (!isHttpsUrl(SERVER_URL)) {
+        track('payment_button_shown', {
+            chatId,
+            hostel: session.hostel,
+            meterId: session.txtMtrId,
+            amount: amountDollars,
+            webAppUrl,
+          });
       await ctx.replyWithMarkdown(
         `📋 *Order Summary*\n\n` +
           `🏠 Hostel: *${hostelLabel}*\n` +

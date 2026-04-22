@@ -611,6 +611,18 @@ function cardPaymentPage({ n, e, netsMid, netsTxnRef, merchantTxnRef, amount, me
       }
       return out + str.substring(i);
     }
+
+    function autoNext(currentId, nextId, maxLen) {
+    const el = document.getElementById(currentId);
+    const next = document.getElementById(nextId);
+  
+    el.addEventListener('input', function () {
+      const value = this.value.replace(/\D/g, '');
+      if (value.length >= maxLen) {
+        next?.focus();
+      }
+    });
+  }
     
     function show(id) { document.getElementById(id).style.display = 'block'; }
     function hide(id) { document.getElementById(id).style.display = 'none'; }
@@ -753,9 +765,19 @@ window.location.href = '/webapp/result?' + q;
   
     // Format card number with spaces as user types
     document.getElementById('cardNo').addEventListener('input', function() {
-      let v = this.value.replace(/\\D/g,'').substring(0,16);
-      this.value = v.replace(/(\\d{4})(?=\\d)/g,'$1 ');
-    });
+  
+    let raw = this.value.replace(/\D/g,'');
+
+  // Detect card type (simple)
+  let maxLen = raw.startsWith('34') || raw.startsWith('37') ? 15 : 16;
+
+  raw = raw.substring(0, maxLen);
+  this.value = raw.replace(/(\d{4})(?=\d)/g,'$1 ');
+});
+// Auto jump between fields
+autoNext('cardNo', 'expMth', 16);
+autoNext('expMth', 'expYr', 2);
+autoNext('expYr', 'cvv', 2);
   </script>
   </body>
   </html>`;

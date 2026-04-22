@@ -30,9 +30,9 @@ function isValidMeterId(value) {
 }
 
 const HOSTELS = {
-  UTOWN: 'utown_rc',
-  RVRC: 'rvrc',
-};
+    CP2: 'cp2',
+    CP2NUS: 'cp2nus',
+  };
 
 // In-memory session store: { chatId -> { stage, hostel, txtMtrId, txtAmount } }
 const sessions = {};
@@ -63,11 +63,11 @@ function mainKeyboard() {
 }
 
 function hostelKeyboard() {
-  return Markup.keyboard([
-    ['🏠 UTown RCs (cp2)', '🏠 RVRC (WIP)'],
-    ['❌ Cancel']
-  ]).resize();
-}
+    return Markup.keyboard([
+      ['🏠 PGPR / PGP / RC / NUSC', '🏠 UTown Residence / RVRC'],
+      ['❌ Cancel']
+    ]).resize();
+  }
 
 function startTopUp(chatId) {
   resetSession(chatId);
@@ -77,8 +77,8 @@ function startTopUp(chatId) {
 }
 
 function getWebAppPath(hostel) {
-  return hostel === HOSTELS.RVRC ? '/webapp/new' : '/webapp';
-}
+    return hostel === HOSTELS.CP2NUS ? '/webapp/new' : '/webapp';
+  }
 
 async function setupTelegramUi() {
     await bot.telegram.setMyCommands([
@@ -126,8 +126,14 @@ bot.command('help', async ctx => {
     return ctx.replyWithMarkdown(
       `ℹ️ *EVS Top-Up Help*\n\n` +
       `*Supported hostels*\n` +
-      `• UTown RCs (cp2)\n` +
-      `• RVRC — not available yet\n\n` +
+      `• PGPR\n` +
+      `• Houses @ PGP\n` +
+      `• Residential Colleges\n` +
+      `• NUS College\n` +
+      `  → uses cp2.evs.com.sg\n` +
+      `• UTown Residence\n` +
+      `• RVRC\n` +
+      `  → uses cp2nus.evs.com.sg\n\n` +
       `*Accepted amount*\n` +
       `• Minimum: $6.00 SGD\n` +
       `• Maximum: $50.00 SGD\n\n` +
@@ -164,23 +170,22 @@ bot.on('text', async ctx => {
   const session = getSession(chatId);
 
   if (session.stage === 'awaiting_hostel') {
-    if (text === '🏠 UTown RCs (cp2)') {
-      session.hostel = HOSTELS.UTOWN;
+    if (text === '🏠 PGPR / PGP / RC / NUSC') {
+      session.hostel = HOSTELS.CP2;
       session.stage = 'awaiting_meter_id';
-      track('hostel_selected', {chatId, hostel: 'utown'})
-      return ctx.reply('🔌 Please enter your 8-digit Meter ID:', mainKeyboard());
-    }
-
-    if (text === '🏠 RVRC (WIP)') {
-        track('hostel_selected_blocked', { chatId, hostel: 'rvrc' });
-        return ctx.reply(
-          '⚠️ RVRC is not available yet. Please choose UTown RCs for now.',
-          hostelKeyboard()
-        );
-      }
-
+      track('hostel_selected', { chatId, hostel: 'cp2' });
+      return ctx.reply('🔌 Please enter your 8-digit Meter ID:', Markup.keyboard([['❌ Cancel']]).resize());
+        }
+  
+    if (text === '🏠 UTown Residence / RVRC') {
+      session.hostel = HOSTELS.CP2NUS;
+      session.stage = 'awaiting_meter_id';
+      track('hostel_selected', { chatId, hostel: 'cp2nus' });
+      return ctx.reply('🔌 Please enter your 8-digit Meter ID:', Markup.keyboard([['❌ Cancel']]).resize());
+        }
+  
     return ctx.reply(
-      '⚠️ Please choose either UTown RCs if you use cp2.evs.com.sg or RVRC if you use cp2nus.evs.com.sg.',
+      '⚠️ Please choose either PGPR / PGP / RC / NUSC or UTown Residence / RVRC.',
       hostelKeyboard()
     );
   }
@@ -194,8 +199,9 @@ bot.on('text', async ctx => {
     session.stage = 'awaiting_amount';
 
     return ctx.replyWithMarkdown(
-        `✅ Meter ID: \`${text}\`\n\nNow enter the *amount in SGD* (e.g. \`20\` for $20.00, min $6, max $50):`
-    );
+        `✅ Meter ID: \`${text}\`\n\nNow enter the *amount in SGD* (e.g. \`20\` for $20.00, min $6, max $50):`,
+        Markup.keyboard([['❌ Cancel']]).resize()
+      );
   }
 
   if (session.stage === 'awaiting_amount') {
@@ -226,7 +232,9 @@ bot.on('text', async ctx => {
       `&txtAmount=${encodeURIComponent(session.amountDollars)}`;
     console.log('🌐 WebApp URL =', webAppUrl);
     const hostelLabel =
-      session.hostel === HOSTELS.RVRC ? 'RVRC/cp2nus (WIP)' : 'UTown RCs (cp2)';
+    session.hostel === HOSTELS.CP2NUS
+      ? 'UTown Residence / RVRC (cp2nus)'
+      : 'PGPR / Houses @ PGP / Residential Colleges / NUS College (cp2)';
 
     if (!isHttpsUrl(SERVER_URL)) {
         track('payment_button_shown', {
@@ -242,7 +250,7 @@ bot.on('text', async ctx => {
           `🔌 Meter ID: \`${session.txtMtrId}\`\n` +
           `💵 Amount: $${amountDollars.toFixed(2)} SGD\n\n` +
           `Your \`SERVER_URL\` is \`${SERVER_URL}\`.\n` +
-          `Telegram WebApp buttons require *HTTPS*, so I can’t open the WebApp inside Telegram on localhost.\n\n` +
+          `Telegram WebApp buttons require *HTTPS*, so I can’t open the WebApp inside Telegram with the current SERVER_URL.\n\n` +
           `Open the payment page in your browser instead:`,
         Markup.inlineKeyboard([
           Markup.button.url('🌐 Open Payment Page', webAppUrl)

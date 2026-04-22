@@ -22,7 +22,7 @@ function isValidMeterId(value) {
 }
 
 const HOSTELS = {
-  ACACIA: 'acacia_college',
+  UTOWN: 'utown_rc',
   RVRC: 'rvrc',
 };
 
@@ -46,7 +46,7 @@ function mainKeyboard() {
 
 function hostelKeyboard() {
   return Markup.keyboard([
-    ['🏠 Acacia College', '🏠 RVRC (WIP)'],
+    ['🏠 U-Town RCs (cp2)', '🏠 RVRC (WIP)'],
     ['❌ Cancel']
   ]).resize();
 }
@@ -123,8 +123,8 @@ bot.on('text', async ctx => {
   const session = getSession(chatId);
 
   if (session.stage === 'awaiting_hostel') {
-    if (text === '🏠 Acacia College') {
-      session.hostel = HOSTELS.ACACIA;
+    if (text === '🏠  U-Town RCs (cp2)') {
+      session.hostel = HOSTELS.UTOWN;
       session.stage = 'awaiting_meter_id';
       return ctx.reply('🔌 Please enter your 8-digit Meter ID:', mainKeyboard());
     }
@@ -136,7 +136,7 @@ bot.on('text', async ctx => {
     }
 
     return ctx.reply(
-      '⚠️ Please choose either Acacia College or RVRC.',
+      '⚠️ Please choose either U-Town RCs if you use cp2.evs.com.sg or RVRC if you use cp2nus.evs.com.sg.',
       hostelKeyboard()
     );
   }
@@ -174,7 +174,7 @@ bot.on('text', async ctx => {
       `&txtAmount=${encodeURIComponent(session.amountDollars)}`;
     console.log('🌐 WebApp URL =', webAppUrl);
     const hostelLabel =
-      session.hostel === HOSTELS.RVRC ? 'RVRC (WIP)' : 'Acacia College';
+      session.hostel === HOSTELS.RVRC ? 'RVRC/cp2nus (WIP)' : 'U-Town RCs (cp2)';
 
     if (!isHttpsUrl(SERVER_URL)) {
       await ctx.replyWithMarkdown(

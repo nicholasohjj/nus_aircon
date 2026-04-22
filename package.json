@@ -7,6 +7,7 @@
     "start": "node server.js",
     "bot": "node bot.js",
     "dev:server": "nodemon server.js",
+    "dev:server_cp2nus": "nodemon server_cp2nus.js",
     "dev:bot": "nodemon bot.js"
   },
   "dependencies": {

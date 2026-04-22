@@ -763,17 +763,10 @@ window.location.href = '/webapp/result?' + q;
       return false;
     }
   
-    // Format card number with spaces as user types
     document.getElementById('cardNo').addEventListener('input', function() {
-  
-    let raw = this.value.replace(/\D/g,'');
-
-  // Detect card type (simple)
-  let maxLen = raw.startsWith('34') || raw.startsWith('37') ? 15 : 16;
-
-  raw = raw.substring(0, maxLen);
-  this.value = raw.replace(/(\d{4})(?=\d)/g,'$1 ');
-});
+      let v = this.value.replace(/\\D/g,'').substring(0,16);
+      this.value = v.replace(/(\\d{4})(?=\\d)/g,'$1 ');
+    });
 // Auto jump between fields
 autoNext('cardNo', 'expMth', 16);
 autoNext('expMth', 'expYr', 2);

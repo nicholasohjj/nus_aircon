@@ -123,7 +123,7 @@ bot.on('text', async ctx => {
   const session = getSession(chatId);
 
   if (session.stage === 'awaiting_hostel') {
-    if (text === '🏠  U-Town RCs (cp2)') {
+    if (text === '🏠 U-Town RCs (cp2)') {
       session.hostel = HOSTELS.UTOWN;
       session.stage = 'awaiting_meter_id';
       return ctx.reply('🔌 Please enter your 8-digit Meter ID:', mainKeyboard());

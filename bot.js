@@ -150,16 +150,16 @@ bot.on('text', async ctx => {
     session.stage = 'awaiting_amount';
 
     return ctx.replyWithMarkdown(
-      `✅ Meter ID: \`${text}\`\n\nNow enter the *amount in SGD* (e.g. \`20\` for $20.00):`
+        `✅ Meter ID: \`${text}\`\n\nNow enter the *amount in SGD* (e.g. \`20\` for $20.00, min $6, max $50):`
     );
   }
 
   if (session.stage === 'awaiting_amount') {
     const amt = Number(text);
 
-    if (!Number.isFinite(amt) || amt <= 0 || amt > 500) {
-      return ctx.reply('⚠️ Please enter a valid amount between $1 and $500.');
-    }
+    if (!Number.isFinite(amt) || amt < 6 || amt > 50) {
+        return ctx.reply('⚠️ Please enter a valid amount between $6 and $50.');
+      }
 
     const amountDollars = Number(amt.toFixed(2));
     const amountCents = Math.round(amountDollars * 100);

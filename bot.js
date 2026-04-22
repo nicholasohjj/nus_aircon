@@ -36,15 +36,25 @@ const HOSTELS = {
 
 // In-memory session store: { chatId -> { stage, hostel, txtMtrId, txtAmount } }
 const sessions = {};
+const SESSION_TTL_MS = 15 * 60 * 1000;
 
 function getSession(chatId) {
-  if (!sessions[chatId]) sessions[chatId] = { stage: 'idle' };
-  return sessions[chatId];
-}
+    const now = Date.now();
+    const s = sessions[chatId];
+  
+    if (!s || (s.updatedAt && now - s.updatedAt > SESSION_TTL_MS)) {
+      sessions[chatId] = { stage: 'idle', updatedAt: now, inFlight: false };
+    } else {
+      sessions[chatId].updatedAt = now;
+    }
+  
+    return sessions[chatId];
+  }
+  
 
-function resetSession(chatId) {
-  sessions[chatId] = { stage: 'idle' };
-}
+  function resetSession(chatId) {
+    sessions[chatId] = { stage: 'idle', updatedAt: Date.now(), inFlight: false };
+  }
 
 function mainKeyboard() {
   return Markup.keyboard([
@@ -71,11 +81,12 @@ function getWebAppPath(hostel) {
 }
 
 async function setupTelegramUi() {
-  await bot.telegram.setMyCommands([
-    { command: 'topup', description: 'Start electricity top-up' },
-    { command: 'cancel', description: 'Cancel current flow' }
-  ]);
-}
+    await bot.telegram.setMyCommands([
+      { command: 'topup', description: 'Start electricity top-up' },
+      { command: 'help', description: 'Show help and usage' },
+      { command: 'cancel', description: 'Cancel current flow' }
+    ]);
+  }
 
 bot.hears('⚡ Top Up', async ctx => {
   const chatId = ctx.chat?.id;
@@ -111,6 +122,26 @@ bot.command('topup', async ctx => {
   );
 });
 
+bot.command('help', async ctx => {
+    return ctx.replyWithMarkdown(
+      `ℹ️ *EVS Top-Up Help*\n\n` +
+      `*Supported hostels*\n` +
+      `• UTown RCs (cp2)\n` +
+      `• RVRC — not available yet\n\n` +
+      `*Accepted amount*\n` +
+      `• Minimum: $6.00 SGD\n` +
+      `• Maximum: $50.00 SGD\n\n` +
+      `*WebApp requirement*\n` +
+      `• Telegram WebApp buttons require an *HTTPS* \`SERVER_URL\`\n` +
+      `• If your server is not HTTPS, the bot will send a normal browser link instead\n\n` +
+      `*Useful commands*\n` +
+      `• /topup — start a new top-up\n` +
+      `• /cancel — cancel the current flow\n` +
+      `• /help — show this message`,
+      mainKeyboard()
+    );
+  });
+  
 bot.command('cancel', async ctx => {
   const chatId = ctx.chat?.id;
   if (chatId) resetSession(chatId);
@@ -141,11 +172,12 @@ bot.on('text', async ctx => {
     }
 
     if (text === '🏠 RVRC (WIP)') {
-      session.hostel = HOSTELS.RVRC;
-      session.stage = 'awaiting_meter_id';
-      track('hostel_selected', {chatId, hostel: 'rvrc'})
-      return ctx.reply('🔌 Please enter your 8-digit Meter ID:', mainKeyboard());
-    }
+        track('hostel_selected_blocked', { chatId, hostel: 'rvrc' });
+        return ctx.reply(
+          '⚠️ RVRC is not available yet. Please choose UTown RCs for now.',
+          hostelKeyboard()
+        );
+      }
 
     return ctx.reply(
       '⚠️ Please choose either UTown RCs if you use cp2.evs.com.sg or RVRC if you use cp2nus.evs.com.sg.',
@@ -185,7 +217,7 @@ bot.on('text', async ctx => {
         meterId: session.txtMtrId,
         amount: amountDollars,
       });
-      
+
     session.stage = 'idle';
 
     const webAppPath = getWebAppPath(session.hostel);
@@ -249,8 +281,9 @@ process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
 bot.catch((err, ctx) => {
-  console.error('Telegram bot error', err);
-  if (ctx?.chat?.id) {
-    ctx.reply('⚠️ Bot error: ' + (err?.message || String(err))).catch(() => {});
-  }
-});
+    console.error('Telegram bot error', err);
+    if (ctx?.chat?.id) {
+      resetSession(ctx.chat.id);
+      ctx.reply('⚠️ Something went wrong. Please try /topup again.').catch(() => {});
+    }
+  });

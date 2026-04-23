@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
-
+const { getMeterSummary } = require("./services/ore");
 const app = express();
 
 app.use(express.urlencoded({ extended: false }));
@@ -115,27 +115,6 @@ async function initPay({ username, amount }) {
   };
 }
 
-async function getMeterInfo(meterDisplayName) {
-  const meterId = String(meterDisplayName || "").trim();
-  if (!meterId) return null;
-
-  const resp = await axios.post(
-    "https://ore.evs.com.sg/cp/get_meter_info",
-    {
-      request: {
-        meter_displayname: meterId,
-      },
-    },
-    {
-      headers: ORE_HEADERS,
-      validateStatus: () => true,
-    },
-  );
-
-  if (resp.status !== 200) return null;
-  return resp.data?.meter_info || null;
-}
-
 function buildPayDisplayAddress(meterInfo) {
   if (!meterInfo) return "";
 
@@ -187,33 +166,6 @@ async function getCreditBalance(meterDisplayName) {
 }
 
 // ── Step 2: GET meter info + balance ──────────────────────────────────────────
-
-async function getMeterSummary(meterDisplayName) {
-  const meterId = String(meterDisplayName || "").trim();
-  if (!meterId) {
-    return {
-      address: null,
-      payAddress: "",
-      credit_bal: null,
-      meter_info: null,
-    };
-  }
-
-  const [meterInfo, creditBal] = await Promise.allSettled([
-    getMeterInfo(meterId),
-    getCreditBalance(meterId),
-  ]);
-
-  const info =
-    meterInfo.status === "fulfilled" ? meterInfo.value || null : null;
-
-  return {
-    address: info?.address || null,
-    payAddress: buildPayDisplayAddress(info),
-    credit_bal: creditBal.status === "fulfilled" ? creditBal.value : null,
-    meter_info: info,
-  };
-}
 
 // ── Step 3a: Build enetspp /pay URL ───────────────────────────────────────────
 
@@ -354,21 +306,24 @@ async function runBootstrap({ txtMtrId, txtAmount }) {
     // STEP 2
     debug.stage = "meter_info";
     const meterSummary = await getMeterSummary(txtMtrId);
-    console.log("[meterSummary]", meterSummary);
+    const payAddress = buildPayDisplayAddress(meterSummary.meter_info);
+
+    if (!payAddress) {
+      throw new Error("payAddress is empty");
+    }
+
     debug.step2Status = 200;
 
     debug.stage = "enetspp_pay";
 
-    if (!meterSummary.payAddress) {
-      throw new Error("payAddress is empty");
-    }
+    console.log("[meterSummary]", meterSummary);
 
     const { txnReq, keyId, hmac } = await fetchNetsFields({
       req,
       sign,
       username: txtMtrId,
       amount,
-      address: meterSummary.payAddress || "",
+      address: payAddress,
     });
 
     debug.step3Status = 200;
@@ -397,12 +352,6 @@ async function runBootstrap({ txtMtrId, txtAmount }) {
 
 // ── Step 4a: POST /GW2/credit/init ───────────────────────────────────────────
 // Establishes the NETS credit session. Returns jsessionId cookie.
-
-function extractStatus(err) {
-  if (err.response) return err.response.status;
-  const match = String(err.message).match(/HTTP (\d+)/);
-  return match ? Number(match[1]) : null;
-}
 
 async function callCreditInit({ txnRand, keyId, hmac }) {
   const body = new URLSearchParams({
@@ -489,7 +438,7 @@ async function submitPanForm({
     txnAmount: "",
     currencyCode: "",
     tenureSubscriptionId: "",
-    paymentType: "",
+    paymentType: "CC",
     txnInterface: "SOAPI",
     imgPayMode,
     name,

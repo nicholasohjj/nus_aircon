@@ -1,16 +1,14 @@
 require("dotenv").config();
 const express = require("express");
+const router = express.Router();
 const axios = require("axios");
 const { wrapper } = require("axios-cookiejar-support");
 const { CookieJar } = require("tough-cookie");
 const cheerio = require("cheerio");
-const { getMeterSummary } = require("./services/ore");
-require("./bot");
+const { getMeterSummary } = require("../services/ore");
 
-const app = express();
-
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
+router.use(express.urlencoded({ extended: false }));
+router.use(express.json());
 
 const BASE = "https://nus-utown.evs.com.sg";
 
@@ -1133,7 +1131,7 @@ async function runPurchaseFlow({ txtMtrId, txtAmount }) {
 
 // ── Existing routes ───────────────────────────────────────────────────────────
 
-app.post("/purchase_flow", async (req, res) => {
+router.post("/purchase_flow", async (req, res) => {
   try {
     console.log(req.body);
     const out = await runPurchaseFlow(req.body || {});
@@ -1152,7 +1150,7 @@ app.post("/purchase_flow", async (req, res) => {
   }
 });
 
-app.get("/purchase_flow/enets", async (req, res) => {
+router.get("/purchase_flow/enets", async (req, res) => {
   try {
     const out = await runPurchaseFlow(req.query || {});
     if (!out?.ok || !out?.enetsBody) return res.status(502).json(out);
@@ -1164,7 +1162,7 @@ app.get("/purchase_flow/enets", async (req, res) => {
   }
 });
 
-app.get("/webapp/result", (req, res) => {
+router.get("/webapp/result", (req, res) => {
   const {
     status = "unknown",
     ref = "",
@@ -1189,7 +1187,7 @@ app.get("/webapp/result", (req, res) => {
   );
 });
 
-app.get("/webapp/bootstrap", async (req, res) => {
+router.get("/webapp/bootstrap", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 
   if (!txtMtrId || !txtAmount) {
@@ -1271,7 +1269,7 @@ app.get("/webapp/bootstrap", async (req, res) => {
   }
 });
 
-app.get("/evs/merchant_txn_ref", async (req, res) => {
+router.get("/evs/merchant_txn_ref", async (req, res) => {
   try {
     const { mode = "0", isDedicated = "1", jsessionid } = req.query;
     const cookieFromHeader = req.header("cookie") || "";
@@ -1314,7 +1312,7 @@ app.get("/evs/merchant_txn_ref", async (req, res) => {
   }
 });
 
-app.post(
+router.post(
   "/webapp/enets_pay",
   express.urlencoded({ extended: false, limit: "10mb" }),
   async (req, res) => {
@@ -1427,7 +1425,7 @@ app.post(
   },
 );
 
-app.get("/webapp/pay", (req, res) => {
+router.get("/webapp/pay", (req, res) => {
   const {
     txtMtrId,
     txtAmount,
@@ -1464,7 +1462,7 @@ app.get("/webapp/pay", (req, res) => {
   );
 });
 
-app.post("/evs/creditpayment", async (req, res) => {
+router.post("/evs/creditpayment", async (req, res) => {
   try {
     const {
       mode = "0",
@@ -1547,11 +1545,11 @@ app.post("/evs/creditpayment", async (req, res) => {
 // Serves a loading page, runs the full purchase flow server-side,
 // then renders the eNETS payment page directly inside the WebApp.
 
-app.get("/", (req, res) => {
+router.get("/", (req, res) => {
   res.send("Hello World");
 });
 
-app.get("/webapp", async (req, res) => {
+router.get("/webapp", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 
   if (!txtMtrId || !txtAmount) {
@@ -1575,7 +1573,7 @@ app.get("/webapp", async (req, res) => {
   }
 });
 
-app.post(
+router.post(
   "/webapp/transsum",
   express.urlencoded({ extended: false }),
   async (req, res) => {
@@ -1643,7 +1641,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EVS Payment</title>
+<title>EVS (cp2) Payment</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap');
@@ -1790,7 +1788,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
 <div class="card">
   <div class="logo">⚡</div>
   <h1>Electricity Top-Up</h1>
-  <p class="subtitle">Connecting to EVS payment gateway…</p>
+  <p class="subtitle">Connecting to EVS (cp2) payment gateway…</p>
 
   <div class="detail-row">
     <span class="detail-label">Meter ID</span>
@@ -1914,7 +1912,4 @@ function escHtml(str) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-const port = process.env.PORT || 3000;
-app.listen(port, "0.0.0.0", () => {
-  console.log(`App listening on port: ${port}`);
-});
+module.exports = router;

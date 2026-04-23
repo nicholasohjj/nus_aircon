@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
-const { getMeterSummary } = require("./services/ore");
+const { getMeterSummary } = require("../services/ore");
 const app = express();
 
 app.use(express.urlencoded({ extended: false }));
@@ -970,7 +970,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EVS Payment</title>
+<title>EVS (cp2nus) Payment</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap');

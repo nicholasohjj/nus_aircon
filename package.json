@@ -4,10 +4,10 @@
   "description": "EVS electricity top-up Telegram bot with eNETS payment WebApp",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node app.js",
     "bot": "node bot.js",
-    "dev:server": "nodemon server.js",
-    "dev:server_cp2nus": "nodemon server_cp2nus.js",
+    "dev:cp2": "nodemon ./routes/cp2.js",
+    "dev:cp2nus": "nodemon ./routes/cp2nus.js",
     "dev:bot": "nodemon bot.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -165,9 +165,6 @@ bot.command("help", async (ctx) => {
       `*Accepted amount*\n` +
       `• Minimum: $6.00 SGD\n` +
       `• Maximum: $50.00 SGD\n\n` +
-      `*WebApp requirement*\n` +
-      `• Telegram WebApp buttons require an *HTTPS* \`SERVER_URL\`\n` +
-      `• If your server is not HTTPS, the bot will send a normal browser link instead\n\n` +
       `*Useful commands*\n` +
       `• /topup — start a new top-up\n` +
       `• /usage — show recent daily usage\n` +

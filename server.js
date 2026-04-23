@@ -4,8 +4,8 @@ const axios = require("axios");
 const { wrapper } = require("axios-cookiejar-support");
 const { CookieJar } = require("tough-cookie");
 const cheerio = require("cheerio");
-const valid = require("card-validator");
-require("./bot");
+const { getMeterSummary } = require("./services/ore");
+// require("./bot");
 
 const app = express();
 
@@ -910,76 +910,6 @@ function parseEnetsResult(html) {
   return null;
 }
 
-async function getMeterSummary(meterDisplayName) {
-  const meterId = String(meterDisplayName || "").trim();
-  if (!meterId) {
-    return { address: null, credit_bal: null };
-  }
-
-  const commonHeaders = {
-    Accept: "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Content-Type": "application/json; charset=UTF-8",
-    Origin: "https://cp2.evs.com.sg",
-    Referer: "https://cp2.evs.com.sg/",
-    "User-Agent":
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-    Authorization: "Bearer",
-  };
-
-  const [meterInfoResp, balResp] = await Promise.allSettled([
-    axios.post(
-      "https://ore.evs.com.sg/cp/get_meter_info",
-      {
-        request: {
-          meter_displayname: meterId,
-        },
-      },
-      {
-        headers: commonHeaders,
-        validateStatus: () => true,
-      },
-    ),
-    axios.post(
-      "https://ore.evs.com.sg/evs1/get_credit_bal",
-      {
-        svcClaimDto: {
-          username: meterId,
-          user_id: null,
-          svcName: "oresvc",
-          endpoint: "/evs1/get_credit_bal",
-          scope: "self",
-          target: "meter.credit_balance",
-          operation: "read",
-        },
-        request: {
-          meter_displayname: meterId,
-        },
-      },
-      {
-        headers: commonHeaders,
-        validateStatus: () => true,
-      },
-    ),
-  ]);
-
-  let address = null;
-  let credit_bal = null;
-
-  if (
-    meterInfoResp.status === "fulfilled" &&
-    meterInfoResp.value.status === 200
-  ) {
-    address = meterInfoResp.value.data?.meter_info?.address || null;
-  }
-
-  if (balResp.status === "fulfilled" && balResp.value.status === 200) {
-    credit_bal = balResp.value.data?.credit_bal ?? null;
-  }
-
-  return { address, credit_bal };
-}
-
 async function createClient() {
   const jar = new CookieJar();
   const client = wrapper(
@@ -1215,12 +1145,10 @@ app.post("/purchase_flow", async (req, res) => {
         : 200;
     return res.status(status).json(out);
   } catch (error) {
-    return res
-      .status(500)
-      .json({
-        error: error.message,
-        responseStatus: error.response?.status || null,
-      });
+    return res.status(500).json({
+      error: error.message,
+      responseStatus: error.response?.status || null,
+    });
   }
 });
 
@@ -1335,13 +1263,11 @@ app.get("/webapp/bootstrap", async (req, res) => {
       redirectUrl: "/webapp/pay?" + params.toString(),
     });
   } catch (err) {
-    return res
-      .status(500)
-      .json({
-        ok: false,
-        stage: "init",
-        error: err.message || "Unknown error",
-      });
+    return res.status(500).json({
+      ok: false,
+      stage: "init",
+      error: err.message || "Unknown error",
+    });
   }
 });
 
@@ -1364,12 +1290,10 @@ app.get("/evs/merchant_txn_ref", async (req, res) => {
       maxRedirects: 5,
     });
     if (response.status !== 200)
-      return res
-        .status(502)
-        .json({
-          error: "Upstream returned non-200",
-          upstreamStatus: response.status,
-        });
+      return res.status(502).json({
+        error: "Upstream returned non-200",
+        upstreamStatus: response.status,
+      });
     const merchant_txn_ref = extractMerchantTxnRef(response.data);
     if (!merchant_txn_ref) {
       return res.status(502).json({
@@ -1383,12 +1307,10 @@ app.get("/evs/merchant_txn_ref", async (req, res) => {
     }
     return res.status(200).json({ merchant_txn_ref });
   } catch (error) {
-    return res
-      .status(500)
-      .json({
-        error: error.message,
-        responseStatus: error.response?.status || null,
-      });
+    return res.status(500).json({
+      error: error.message,
+      responseStatus: error.response?.status || null,
+    });
   }
 });
 
@@ -1571,12 +1493,10 @@ app.post("/evs/creditpayment", async (req, res) => {
       maxRedirects: 5,
     });
     if (evsResp.status !== 200)
-      return res
-        .status(502)
-        .json({
-          error: "EVS paymentServlet returned non-200",
-          upstreamStatus: evsResp.status,
-        });
+      return res.status(502).json({
+        error: "EVS paymentServlet returned non-200",
+        upstreamStatus: evsResp.status,
+      });
     const merchant_txn_ref = extractMerchantTxnRef(evsResp.data);
     if (!merchant_txn_ref) {
       return res.status(502).json({
@@ -1608,22 +1528,18 @@ app.post("/evs/creditpayment", async (req, res) => {
         validateStatus: () => true,
       },
     );
-    return res
-      .status(200)
-      .json({
-        merchant_txn_ref,
-        paymentUpstreamStatus: payResp.status,
-        paymentContentType: payResp.headers?.["content-type"] || null,
-        paymentBody:
-          typeof payResp.data === "string" ? payResp.data : payResp.data,
-      });
+    return res.status(200).json({
+      merchant_txn_ref,
+      paymentUpstreamStatus: payResp.status,
+      paymentContentType: payResp.headers?.["content-type"] || null,
+      paymentBody:
+        typeof payResp.data === "string" ? payResp.data : payResp.data,
+    });
   } catch (error) {
-    return res
-      .status(500)
-      .json({
-        error: error.message,
-        responseStatus: error.response?.status || null,
-      });
+    return res.status(500).json({
+      error: error.message,
+      responseStatus: error.response?.status || null,
+    });
   }
 });
 

@@ -1,11 +1,10 @@
 require("dotenv").config();
 const { Telegraf, Markup } = require("telegraf");
-
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
 console.log("🚀 SERVER_URL =", SERVER_URL);
 if (!TOKEN) throw new Error("TELEGRAM_BOT_TOKEN env var is required");
-
+const { getMeterSummary } = require("./services/ore")
 const bot = new Telegraf(TOKEN);
 
 function track(event, data = {}) {
@@ -81,6 +80,7 @@ function getWebAppPath(hostel) {
 
 async function setupTelegramUi() {
   await bot.telegram.setMyCommands([
+    { command: "balance", description: "Check meter balance" },
     { command: "topup", description: "Start electricity top-up" },
     { command: "help", description: "Show help and usage" },
     { command: "cancel", description: "Cancel current flow" },
@@ -103,6 +103,19 @@ bot.start(async (ctx) => {
   return ctx.reply(
     "⚡ EVS Electricity Top-Up\n\nChoose an option below or use /topup.",
     mainKeyboard(),
+  );
+});
+
+bot.command("balance", async (ctx) => {
+  const chatId = ctx.chat?.id;
+  track("balance_command", { chatId });
+
+  const session = getSession(chatId);
+  session.stage = "awaiting_meter_id_balance";
+
+  return ctx.reply(
+    "🔌 Please enter your 8-digit Meter ID to check your balance:",
+    Markup.keyboard([["❌ Cancel"]]).resize(),
   );
 });
 
@@ -275,6 +288,37 @@ bot.on("text", async (ctx) => {
         `Tap below to proceed to payment:`,
       Markup.inlineKeyboard([Markup.button.webApp("💳 Pay Now", webAppUrl)]),
     );
+  }
+
+  if (session.stage === "awaiting_meter_id_balance") {
+    if (!isValidMeterId(text)) {
+      return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
+    }
+
+    session.stage = "idle";
+    await ctx.reply("🔍 Checking balance…");
+
+    try {
+      const summary = await getMeterSummary(text);
+
+      const lines = [`⚡ *Meter ID:* \`${text}\``];
+      if (summary.address) lines.push(`🏠 *Address:* ${summary.address}`);
+      
+      const bal = Number(summary.credit_bal);
+      if (summary.credit_bal !== null && summary.credit_bal !== undefined && Number.isFinite(bal)) {
+        lines.push(`💰 *Balance:* SGD ${bal.toFixed(2)}`);
+      } else {
+        lines.push(`💰 *Balance:* unavailable`);
+      }
+
+      return ctx.replyWithMarkdown(lines.join("\n"), mainKeyboard());
+    } catch (err) {
+      track("balance_error", { chatId, error: err.message });
+      return ctx.reply(
+        "⚠️ Failed to fetch balance. Please try again.",
+        mainKeyboard(),
+      );
+    }
   }
 
   return ctx.reply("Use /topup to start a top up.", mainKeyboard());

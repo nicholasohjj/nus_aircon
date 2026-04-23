@@ -6,6 +6,12 @@ const { wrapper } = require("axios-cookiejar-support");
 const { CookieJar } = require("tough-cookie");
 const cheerio = require("cheerio");
 const { getMeterSummary } = require("../services/ore");
+const { PostHog } = require("posthog-node");
+
+const posthog = new PostHog(process.env.POSTHOG_API_KEY, {
+  host: process.env.POSTHOG_HOST || "https://eu.i.posthog.com",
+  enableExceptionAutocapture: true,
+});
 
 router.use(express.urlencoded({ extended: false }));
 router.use(express.json());
@@ -22,6 +28,7 @@ const DEFAULT_HEADERS = {
 };
 
 function track(event, data = {}) {
+  const { meterId, ...properties } = data;
   console.log(
     JSON.stringify({
       ts: new Date().toISOString(),
@@ -29,6 +36,11 @@ function track(event, data = {}) {
       ...data,
     }),
   );
+  posthog.capture({
+    distinctId: String(meterId || "anonymous"),
+    event,
+    properties: { meterId, ...properties, route: "cp2" },
+  });
 }
 
 function htmlDecode(str) {
@@ -1143,6 +1155,10 @@ router.post("/purchase_flow", async (req, res) => {
         : 200;
     return res.status(status).json(out);
   } catch (error) {
+    posthog.captureException(error, "anonymous", {
+      route: "cp2",
+      endpoint: "/purchase_flow",
+    });
     return res.status(500).json({
       error: error.message,
       responseStatus: error.response?.status || null,
@@ -1172,6 +1188,16 @@ router.get("/webapp/result", (req, res) => {
     address = "",
     balance = "",
   } = req.query;
+
+  const eventName =
+    status === "success" ? "payment_completed" : "payment_failed";
+  track(eventName, {
+    meterId,
+    amount,
+    status,
+    merchantTxnRef: ref,
+    reason: reason || null,
+  });
 
   res.setHeader("Content-Type", "text/html; charset=UTF-8");
   return res.send(

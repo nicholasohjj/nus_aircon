@@ -1,5 +1,7 @@
 require("dotenv").config();
 const { Telegraf, Markup } = require("telegraf");
+const { PostHog } = require("posthog-node");
+
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
 console.log("🚀 SERVER_URL =", SERVER_URL);
@@ -11,14 +13,22 @@ const {
 } = require("./services/ore");
 const bot = new Telegraf(TOKEN);
 
+const posthog = new PostHog(process.env.POSTHOG_API_KEY, {
+  host: process.env.POSTHOG_HOST || "https://eu.i.posthog.com",
+  enableExceptionAutocapture: true,
+});
+
 function track(event, data = {}) {
-  console.log(
-    JSON.stringify({
-      ts: new Date().toISOString(),
-      event,
-      ...data,
-    }),
-  );
+  const { chatId, ...properties } = data;
+
+  // Still log locally so you don't lose console visibility
+  console.log(JSON.stringify({ ts: new Date().toISOString(), event, ...data }));
+
+  posthog.capture({
+    distinctId: String(chatId ?? "anonymous"),
+    event,
+    properties,
+  });
 }
 
 function isHttpsUrl(url) {
@@ -442,11 +452,18 @@ bot.on("text", async (ctx) => {
   console.log("🤖 EVS Telegram bot running...");
 })();
 
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
+process.once("SIGINT", async () => {
+  await posthog.shutdown();
+  bot.stop("SIGINT");
+});
+process.once("SIGTERM", async () => {
+  await posthog.shutdown();
+  bot.stop("SIGTERM");
+});
 
 bot.catch((err, ctx) => {
   console.error("Telegram bot error", err);
+  posthog.captureException(err, String(ctx?.chat?.id ?? "anonymous"));
   if (ctx?.chat?.id) {
     resetSession(ctx.chat.id);
     ctx

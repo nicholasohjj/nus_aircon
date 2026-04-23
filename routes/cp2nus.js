@@ -2,7 +2,29 @@ require("dotenv").config();
 const express = require("express");
 const axios = require("axios");
 const { getMeterSummary } = require("../services/ore");
+const { PostHog } = require("posthog-node");
 const app = express();
+
+const posthog = new PostHog(process.env.POSTHOG_API_KEY, {
+  host: process.env.POSTHOG_HOST || "https://eu.i.posthog.com",
+  enableExceptionAutocapture: true,
+});
+
+function track(event, data = {}) {
+  const { meterId, ...properties } = data;
+  console.log(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      event,
+      ...data,
+    }),
+  );
+  posthog.capture({
+    distinctId: String(meterId || "anonymous"),
+    event,
+    properties: { meterId, ...properties, route: "cp2nus" },
+  });
+}
 
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
@@ -1105,12 +1127,22 @@ app.get("/webapp/bootstrap", async (req, res) => {
       .json({ ok: false, error: "Missing meter ID or amount." });
   }
 
+  track("bootstrap_started", { meterId: txtMtrId, amount: txtAmount });
+
   try {
     const boot = await runBootstrap({ txtMtrId, txtAmount });
 
     if (!boot.ok) {
+      track("bootstrap_failed", {
+        meterId: txtMtrId,
+        amount: txtAmount,
+        stage: boot.stage || "unknown",
+        error: boot.error || null,
+      });
       return res.status(500).json(boot);
     }
+
+    track("bootstrap_succeeded", { meterId: txtMtrId, amount: txtAmount });
 
     const params = new URLSearchParams({
       txtMtrId,
@@ -1132,6 +1164,16 @@ app.get("/webapp/bootstrap", async (req, res) => {
       redirectUrl: "/webapp/pay?" + params.toString(),
     });
   } catch (err) {
+    posthog.captureException(err, String(txtMtrId || "anonymous"), {
+      route: "cp2nus",
+      endpoint: "/webapp/bootstrap",
+    });
+    track("bootstrap_failed", {
+      meterId: txtMtrId,
+      amount: txtAmount,
+      stage: err.stage || "unknown",
+      error: err.error || err.message,
+    });
     return res.status(500).json({
       ok: false,
       stage: err.stage || "unknown",
@@ -1304,6 +1346,16 @@ app.get("/webapp/result", (req, res) => {
     balance = "",
   } = req.query;
 
+  const eventName =
+    status === "success" ? "payment_completed" : "payment_failed";
+  track(eventName, {
+    meterId,
+    amount,
+    status,
+    merchantTxnRef: ref,
+    reason: reason || null,
+  });
+
   res.setHeader("Content-Type", "text/html; charset=UTF-8");
   return res.send(
     renderFinalResultPage({
@@ -1321,3 +1373,12 @@ app.get("/webapp/result", (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.listen(3001, () => console.log("Server running on http://localhost:3001"));
+
+process.once("SIGINT", async () => {
+  await posthog.shutdown();
+  process.exit(0);
+});
+process.once("SIGTERM", async () => {
+  await posthog.shutdown();
+  process.exit(0);
+});

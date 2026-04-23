@@ -1548,9 +1548,9 @@ app.post("/evs/creditpayment", async (req, res) => {
 // then renders the eNETS payment page directly inside the WebApp.
 
 app.get("/", (req, res) => {
-    res.send("Hello World");
-  });
-  
+  res.send("Hello World");
+});
+
 app.get("/webapp", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 

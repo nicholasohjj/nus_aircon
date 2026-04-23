@@ -300,16 +300,17 @@ bot.on("text", async (ctx) => {
 
     try {
       const summary = await getMeterSummary(text);
+      console.log("BALANCE_LOOKUP", {
+        requestedMeterId: text,
+        meterInfo: summary.meter_info,
+        creditBal: summary.credit_bal,
+      });
 
       const lines = [`⚡ *Meter ID:* \`${text}\``];
       if (summary.address) lines.push(`🏠 *Address:* ${summary.address}`);
 
       const bal = Number(summary.credit_bal);
-      if (
-        summary.credit_bal !== null &&
-        summary.credit_bal !== undefined &&
-        Number.isFinite(bal)
-      ) {
+      if (summary.credit_bal != null && Number.isFinite(bal)) {
         lines.push(`💰 *Balance:* SGD ${bal.toFixed(2)}`);
       } else {
         lines.push(`💰 *Balance:* unavailable`);

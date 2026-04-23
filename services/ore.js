@@ -37,17 +37,8 @@ async function getCreditBalance(meterDisplayName) {
   if (!meterId) return null;
 
   const resp = await axios.post(
-    "https://ore.evs.com.sg/evs1/get_credit_bal",
+    "https://ore.evs.com.sg/tcm/get_credit_balance",
     {
-      svcClaimDto: {
-        username: meterId,
-        user_id: null,
-        svcName: "oresvc",
-        endpoint: "/evs1/get_credit_bal",
-        scope: "self",
-        target: "meter.credit_balance",
-        operation: "read",
-      },
       request: {
         meter_displayname: meterId,
       },
@@ -59,13 +50,13 @@ async function getCreditBalance(meterDisplayName) {
   );
 
   if (resp.status !== 200) return null;
-  return resp.data?.credit_bal ?? null;
+  return resp.data?.ref_bal ?? null;
 }
 
 async function getMeterSummary(meterDisplayName) {
   const meterId = String(meterDisplayName || "").trim();
   if (!meterId) {
-    return { address: null, credit_bal: null };
+    return { address: null, credit_bal: null, meter_info: null };
   }
 
   const [meterInfo, creditBal] = await Promise.allSettled([
@@ -74,6 +65,7 @@ async function getMeterSummary(meterDisplayName) {
   ]);
 
   return {
+    meter_info: meterInfo.status === "fulfilled" ? meterInfo.value : null,
     address:
       meterInfo.status === "fulfilled"
         ? meterInfo.value?.address || null

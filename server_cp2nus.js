@@ -1271,10 +1271,12 @@ app.post(
       } = req.body;
 
       if (!enc || !netsMid || !merchantTxnRef) {
-        return res.status(400).json({
-          ok: false,
-          error: "Missing required fields (enc, netsMid, merchantTxnRef)",
-        });
+        return res
+          .status(400)
+          .json({
+            ok: false,
+            error: "Missing required fields (enc, netsMid, merchantTxnRef)",
+          });
       }
 
       const browserInfo = {

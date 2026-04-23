@@ -4,7 +4,7 @@ const axios = require("axios");
 const { wrapper } = require("axios-cookiejar-support");
 const { CookieJar } = require("tough-cookie");
 const cheerio = require("cheerio");
-const { getMeterSummary } = require("./services/ore")
+const { getMeterSummary } = require("./services/ore");
 require("./bot");
 
 const app = express();
@@ -1145,12 +1145,10 @@ app.post("/purchase_flow", async (req, res) => {
         : 200;
     return res.status(status).json(out);
   } catch (error) {
-    return res
-      .status(500)
-      .json({
-        error: error.message,
-        responseStatus: error.response?.status || null,
-      });
+    return res.status(500).json({
+      error: error.message,
+      responseStatus: error.response?.status || null,
+    });
   }
 });
 
@@ -1265,13 +1263,11 @@ app.get("/webapp/bootstrap", async (req, res) => {
       redirectUrl: "/webapp/pay?" + params.toString(),
     });
   } catch (err) {
-    return res
-      .status(500)
-      .json({
-        ok: false,
-        stage: "init",
-        error: err.message || "Unknown error",
-      });
+    return res.status(500).json({
+      ok: false,
+      stage: "init",
+      error: err.message || "Unknown error",
+    });
   }
 });
 
@@ -1294,12 +1290,10 @@ app.get("/evs/merchant_txn_ref", async (req, res) => {
       maxRedirects: 5,
     });
     if (response.status !== 200)
-      return res
-        .status(502)
-        .json({
-          error: "Upstream returned non-200",
-          upstreamStatus: response.status,
-        });
+      return res.status(502).json({
+        error: "Upstream returned non-200",
+        upstreamStatus: response.status,
+      });
     const merchant_txn_ref = extractMerchantTxnRef(response.data);
     if (!merchant_txn_ref) {
       return res.status(502).json({
@@ -1313,12 +1307,10 @@ app.get("/evs/merchant_txn_ref", async (req, res) => {
     }
     return res.status(200).json({ merchant_txn_ref });
   } catch (error) {
-    return res
-      .status(500)
-      .json({
-        error: error.message,
-        responseStatus: error.response?.status || null,
-      });
+    return res.status(500).json({
+      error: error.message,
+      responseStatus: error.response?.status || null,
+    });
   }
 });
 
@@ -1501,12 +1493,10 @@ app.post("/evs/creditpayment", async (req, res) => {
       maxRedirects: 5,
     });
     if (evsResp.status !== 200)
-      return res
-        .status(502)
-        .json({
-          error: "EVS paymentServlet returned non-200",
-          upstreamStatus: evsResp.status,
-        });
+      return res.status(502).json({
+        error: "EVS paymentServlet returned non-200",
+        upstreamStatus: evsResp.status,
+      });
     const merchant_txn_ref = extractMerchantTxnRef(evsResp.data);
     if (!merchant_txn_ref) {
       return res.status(502).json({
@@ -1538,22 +1528,18 @@ app.post("/evs/creditpayment", async (req, res) => {
         validateStatus: () => true,
       },
     );
-    return res
-      .status(200)
-      .json({
-        merchant_txn_ref,
-        paymentUpstreamStatus: payResp.status,
-        paymentContentType: payResp.headers?.["content-type"] || null,
-        paymentBody:
-          typeof payResp.data === "string" ? payResp.data : payResp.data,
-      });
+    return res.status(200).json({
+      merchant_txn_ref,
+      paymentUpstreamStatus: payResp.status,
+      paymentContentType: payResp.headers?.["content-type"] || null,
+      paymentBody:
+        typeof payResp.data === "string" ? payResp.data : payResp.data,
+    });
   } catch (error) {
-    return res
-      .status(500)
-      .json({
-        error: error.message,
-        responseStatus: error.response?.status || null,
-      });
+    return res.status(500).json({
+      error: error.message,
+      responseStatus: error.response?.status || null,
+    });
   }
 });
 
@@ -1923,9 +1909,7 @@ function escHtml(str) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-// node web server
 const port = process.env.PORT || 3000;
-
-app.listen(port, () => {
+app.listen(port, "0.0.0.0", () => {
   console.log(`App listening on port: ${port}`);
 });

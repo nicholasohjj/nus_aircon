@@ -4,7 +4,7 @@ const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
 console.log("🚀 SERVER_URL =", SERVER_URL);
 if (!TOKEN) throw new Error("TELEGRAM_BOT_TOKEN env var is required");
-const { getMeterSummary } = require("./services/ore")
+const { getMeterSummary } = require("./services/ore");
 const bot = new Telegraf(TOKEN);
 
 function track(event, data = {}) {
@@ -303,9 +303,13 @@ bot.on("text", async (ctx) => {
 
       const lines = [`⚡ *Meter ID:* \`${text}\``];
       if (summary.address) lines.push(`🏠 *Address:* ${summary.address}`);
-      
+
       const bal = Number(summary.credit_bal);
-      if (summary.credit_bal !== null && summary.credit_bal !== undefined && Number.isFinite(bal)) {
+      if (
+        summary.credit_bal !== null &&
+        summary.credit_bal !== undefined &&
+        Number.isFinite(bal)
+      ) {
         lines.push(`💰 *Balance:* SGD ${bal.toFixed(2)}`);
       } else {
         lines.push(`💰 *Balance:* unavailable`);

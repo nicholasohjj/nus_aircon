@@ -32,36 +32,6 @@ async function getMeterInfo(meterDisplayName) {
   return resp.data?.meter_info || null;
 }
 
-async function getCreditBalance(meterDisplayName) {
-  const meterId = String(meterDisplayName || "").trim();
-  if (!meterId) return null;
-
-  const resp = await axios.post(
-    "https://ore.evs.com.sg/evs1/get_credit_bal",
-    {
-      svcClaimDto: {
-        username: meterId,
-        user_id: null,
-        svcName: "oresvc",
-        endpoint: "/evs1/get_credit_bal",
-        scope: "self",
-        target: "meter.credit_balance",
-        operation: "read",
-      },
-      request: {
-        meter_displayname: meterId,
-      },
-    },
-    {
-      headers: ORE_HEADERS,
-      validateStatus: () => true,
-    },
-  );
-
-  if (resp.status !== 200) return null;
-  return resp.data?.credit_bal ?? null;
-}
-
 async function getMeterSummary(meterDisplayName) {
   const meterId = String(meterDisplayName || "").trim();
   if (!meterId) {

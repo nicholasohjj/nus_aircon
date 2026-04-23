@@ -4,7 +4,11 @@ const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
 console.log("🚀 SERVER_URL =", SERVER_URL);
 if (!TOKEN) throw new Error("TELEGRAM_BOT_TOKEN env var is required");
-const { getMeterSummary } = require("./services/ore");
+const {
+  getMeterSummary,
+  getMeterUsage,
+  formatUsageSummary,
+} = require("./services/ore");
 const bot = new Telegraf(TOKEN);
 
 function track(event, data = {}) {
@@ -81,6 +85,7 @@ function getWebAppPath(hostel) {
 async function setupTelegramUi() {
   await bot.telegram.setMyCommands([
     { command: "balance", description: "Check meter balance" },
+    { command: "usage", description: "Show recent daily usage" },
     { command: "topup", description: "Start electricity top-up" },
     { command: "help", description: "Show help and usage" },
     { command: "cancel", description: "Cancel current flow" },
@@ -108,6 +113,8 @@ bot.start(async (ctx) => {
 
 bot.command("balance", async (ctx) => {
   const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
   track("balance_command", { chatId });
 
   const session = getSession(chatId);
@@ -115,6 +122,21 @@ bot.command("balance", async (ctx) => {
 
   return ctx.reply(
     "🔌 Please enter your 8-digit Meter ID to check your balance:",
+    Markup.keyboard([["❌ Cancel"]]).resize(),
+  );
+});
+
+bot.command("usage", async (ctx) => {
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
+  track("usage_command", { chatId });
+
+  const session = getSession(chatId);
+  session.stage = "awaiting_meter_id_usage";
+
+  return ctx.reply(
+    "🔌 Please enter your 8-digit Meter ID to view the last 7 days of usage:",
     Markup.keyboard([["❌ Cancel"]]).resize(),
   );
 });
@@ -148,6 +170,7 @@ bot.command("help", async (ctx) => {
       `• If your server is not HTTPS, the bot will send a normal browser link instead\n\n` +
       `*Useful commands*\n` +
       `• /topup — start a new top-up\n` +
+      `• /usage — show recent daily usage\n` +
       `• /cancel — cancel the current flow\n` +
       `• /help — show this message`,
     mainKeyboard(),
@@ -212,12 +235,101 @@ bot.on("text", async (ctx) => {
     }
 
     session.txtMtrId = text;
-    session.stage = "awaiting_amount";
+    await ctx.reply("🔍 Fetching meter details and recent usage…");
 
-    return ctx.replyWithMarkdown(
-      `✅ Meter ID: \`${text}\`\n\nNow enter the *amount in SGD* (e.g. \`20\` for $20.00, min $6, max $50):`,
-      Markup.keyboard([["❌ Cancel"]]).resize(),
-    );
+    try {
+      const [summary, usage] = await Promise.all([
+        getMeterSummary(text),
+        getMeterUsage(text, 7),
+      ]);
+
+      session.stage = "awaiting_amount";
+
+      const lines = [`✅ Meter ID: \`${text}\``];
+
+      if (summary.address) {
+        lines.push(`🏠 *Address:* ${summary.address}`);
+      }
+
+      const bal = Number(summary.credit_bal);
+      if (summary.credit_bal != null && Number.isFinite(bal)) {
+        lines.push(`💰 *Balance:* SGD ${bal.toFixed(2)}`);
+      }
+
+      const usageText = formatUsageSummary(
+        usage.history,
+        summary.credit_bal,
+        7,
+      );
+      if (usageText) {
+        lines.push("");
+        lines.push("*Daily consumption*");
+        lines.push(usageText);
+      }
+
+      lines.push("");
+      lines.push(
+        "Now enter the *amount in SGD* (e.g. `20` for $20.00, min $6, max $50):",
+      );
+
+      return ctx.replyWithMarkdown(
+        lines.join("\n"),
+        Markup.keyboard([["❌ Cancel"]]).resize(),
+      );
+    } catch (err) {
+      track("prefill_usage_error", {
+        chatId,
+        meterId: text,
+        error: err.message,
+      });
+
+      session.stage = "awaiting_amount";
+      return ctx.replyWithMarkdown(
+        `✅ Meter ID: \`${text}\`\n\n` +
+          `⚠️ I couldn't fetch recent usage right now.\n\n` +
+          `Now enter the *amount in SGD* (e.g. \`20\` for $20.00, min $6, max $50):`,
+        Markup.keyboard([["❌ Cancel"]]).resize(),
+      );
+    }
+  }
+
+  if (session.stage === "awaiting_meter_id_usage") {
+    if (!isValidMeterId(text)) {
+      return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
+    }
+
+    session.stage = "idle";
+    await ctx.reply("🔍 Checking recent usage…");
+
+    try {
+      const [summary, usage] = await Promise.all([
+        getMeterSummary(text),
+        getMeterUsage(text, 7),
+      ]);
+
+      const lines = [`⚡ *Meter ID:* \`${text}\``];
+      if (summary.address) lines.push(`🏠 *Address:* ${summary.address}`);
+
+      const bal = Number(summary.credit_bal);
+      if (summary.credit_bal != null && Number.isFinite(bal)) {
+        lines.push(`💰 *Balance:* SGD ${bal.toFixed(2)}`);
+      }
+
+      lines.push("");
+      lines.push("*Daily consumption (last 7 days)*");
+      lines.push(
+        formatUsageSummary(usage.history, summary.credit_bal, 7) ||
+          "No usage data available.",
+      );
+
+      return ctx.replyWithMarkdown(lines.join("\n"), mainKeyboard());
+    } catch (err) {
+      track("usage_error", { chatId, meterId: text, error: err.message });
+      return ctx.reply(
+        "⚠️ Failed to fetch usage history. Please try again.",
+        mainKeyboard(),
+      );
+    }
   }
 
   if (session.stage === "awaiting_amount") {
@@ -300,11 +412,6 @@ bot.on("text", async (ctx) => {
 
     try {
       const summary = await getMeterSummary(text);
-      console.log("BALANCE_LOOKUP", {
-        requestedMeterId: text,
-        meterInfo: summary.meter_info,
-        creditBal: summary.credit_bal,
-      });
 
       const lines = [`⚡ *Meter ID:* \`${text}\``];
       if (summary.address) lines.push(`🏠 *Address:* ${summary.address}`);
@@ -326,7 +433,10 @@ bot.on("text", async (ctx) => {
     }
   }
 
-  return ctx.reply("Use /topup to start a top up.", mainKeyboard());
+  return ctx.reply(
+    "I didn’t understand that. Use /topup to top up, /balance to check balance, or /help for instructions.",
+    mainKeyboard(),
+  );
 });
 
 (async () => {

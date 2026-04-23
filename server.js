@@ -1546,6 +1546,11 @@ app.post("/evs/creditpayment", async (req, res) => {
 // ── NEW: Telegram WebApp route ────────────────────────────────────────────────
 // Serves a loading page, runs the full purchase flow server-side,
 // then renders the eNETS payment page directly inside the WebApp.
+
+app.get("/", (req, res) => {
+    res.send("Hello World");
+  });
+  
 app.get("/webapp", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 

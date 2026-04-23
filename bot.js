@@ -84,9 +84,9 @@ function getWebAppPath(hostel) {
 
 async function setupTelegramUi() {
   await bot.telegram.setMyCommands([
+    { command: "topup", description: "Start electricity top-up" },
     { command: "balance", description: "Check meter balance" },
     { command: "usage", description: "Show recent daily usage" },
-    { command: "topup", description: "Start electricity top-up" },
     { command: "help", description: "Show help and usage" },
     { command: "cancel", description: "Cancel current flow" },
   ]);

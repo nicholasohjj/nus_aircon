@@ -4,7 +4,7 @@ const express = require("express");
 const cp2nus = require("./routes/cp2nus");
 const cp2 = require("./routes/cp2");
 
-// require("./bot");
+require("./bot");
 
 const app = express();
 

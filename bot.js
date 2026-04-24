@@ -435,12 +435,18 @@ bot.on("text", async (ctx) => {
 (async () => {
   try {
     await setupTelegramUi();
+
+    // clear old webhook if any
     await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-    await bot.launch({ dropPendingUpdates: true });
+
+    await bot.launch({
+      dropPendingUpdates: true,
+    });
+
     console.log("🤖 EVS Telegram bot running...");
   } catch (err) {
     console.error("Failed to launch Telegram bot:", err);
-    // Don't call process.exit(1) — let Express keep running
+    process.exit(1);
   }
 })();
 

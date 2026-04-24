@@ -13,6 +13,8 @@ router.use(express.json());
 
 const BASE = "https://nus-utown.evs.com.sg";
 
+const BASE_PATH = ""; // TO-DO: Replace with "/cp2"
+
 const DEFAULT_HEADERS = {
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",

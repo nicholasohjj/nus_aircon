@@ -16,6 +16,7 @@ const ENETS_PP_HOST = "https://enetspp-nus-live.evs.com.sg";
 const NETS_API_HOST = "https://api.nets.com.sg";
 
 const FIXED_USER_ID = "5771";
+const BASE_PATH = "/cp2nus";
 
 const DEFAULT_HEADERS = {
   "Accept-Language": "en-US,en;q=0.9",
@@ -579,6 +580,7 @@ function cardPaymentPage({
   txnRand = "",
   keyId = "",
   hmac = "",
+  basePath = BASE_PATH,
 }) {
   const amtDisplay = Number(amount || 0).toFixed(2);
   return `<!DOCTYPE html>
@@ -706,6 +708,7 @@ function cardPaymentPage({
   const RSA_E          = ${JSON.stringify(e)};
   const MERCHANT_TXN_REF = ${JSON.stringify(merchantTxnRef)};
   const amtDisplay     = ${JSON.stringify(amtDisplay)};
+  const BASE_PATH      = ${JSON.stringify(basePath)};
 
   function linebrk(str, maxLen) {
     let out = '', i = 0;
@@ -815,7 +818,7 @@ function cardPaymentPage({
 
       document.getElementById('btnLabel').textContent = 'Processing…';
 
-      const result = await fetch('/webapp/enets_pay', {
+      const result = await fetch('${escHtml(basePath)}/webapp/enets_pay', {
         method:  'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body:    payload.toString(),
@@ -834,7 +837,7 @@ function cardPaymentPage({
         balance: ${JSON.stringify(balance)},
       }).toString();
 
-      window.location.href = '/webapp/result?' + q;
+      window.location.href = '${escHtml(basePath)}/webapp/result?' + q;
 
     } catch (err) {
       btn.disabled = false;
@@ -862,7 +865,7 @@ function cardPaymentPage({
 
 // ── Result page ───────────────────────────────────────────────────────────────
 
-function renderFinalResultPage(parsed) {
+function renderFinalResultPage(parsed, basePath = BASE_PATH) {
   const ok = parsed.status === "success";
   const title = ok ? "Top-Up Successful" : "Top-Up Failed";
   const reason = parsed.reason || "Unable to determine transaction outcome.";
@@ -923,7 +926,7 @@ function renderFinalResultPage(parsed) {
   <div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value">${escHtml(parsed.amount || "-")}</span></div>
   <div class="status-note">${escHtml(reason)}</div>
   <div class="actions">
-    <button class="btn" onclick="window.location.href='/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || "")}&txtAmount=${encodeURIComponent((parsed.amount || "").replace(/[^0-9.]/g, ""))}'" >Top Up Again</button>
+    <button class="btn" onclick="window.location.href='${escHtml(basePath)}/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || "")}&txtAmount=${encodeURIComponent((parsed.amount || "").replace(/[^0-9.]/g, ""))}'" >Top Up Again</button>
     <button class="btn secondary" onclick="window.Telegram?.WebApp?.close()">Close</button>
   </div>
 </div>
@@ -933,7 +936,12 @@ function renderFinalResultPage(parsed) {
 
 // ── Loading page ──────────────────────────────────────────────────────────────
 
-function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
+function loadingPage(
+  txtMtrId,
+  txtAmount,
+  meterInfo = {},
+  basePath = BASE_PATH,
+) {
   const amtDisplay = Number(txtAmount).toFixed(2);
   const balanceDisplay =
     meterInfo.credit_bal !== undefined && meterInfo.credit_bal !== null
@@ -1012,6 +1020,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
 
   const METER_ID   = ${JSON.stringify(txtMtrId)};
   const TXN_AMOUNT = ${JSON.stringify(txtAmount)};
+  const BASE_PATH  = ${JSON.stringify(basePath)};
 
   async function runFlow() {
     document.getElementById('errorCard').style.display   = 'none';
@@ -1023,7 +1032,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
       document.getElementById('statusText').textContent = 'Creating transaction…';
 
       const resp = await fetch(
-        '/webapp/bootstrap?txtMtrId=' + encodeURIComponent(METER_ID) +
+        '${escHtml(basePath)}/webapp/bootstrap?txtMtrId=' + encodeURIComponent(METER_ID) +
         '&txtAmount=' + encodeURIComponent(TXN_AMOUNT)
       );
       const out = await resp.json().catch(() => ({}));
@@ -1061,10 +1070,10 @@ router.get("/webapp", async (req, res) => {
   try {
     const meterSummary = await getMeterSummary(txtMtrId);
     res.setHeader("Content-Type", "text/html; charset=UTF-8");
-    return res.send(loadingPage(txtMtrId, txtAmount, meterSummary));
+    return res.send(loadingPage(txtMtrId, txtAmount, meterSummary, BASE_PATH));
   } catch {
     res.setHeader("Content-Type", "text/html; charset=UTF-8");
-    return res.send(loadingPage(txtMtrId, txtAmount, {}));
+    return res.send(loadingPage(txtMtrId, txtAmount, {}, BASE_PATH));
   }
 });
 
@@ -1114,12 +1123,12 @@ router.get("/webapp/bootstrap", async (req, res) => {
 
     return res.status(200).json({
       ok: true,
-      redirectUrl: "/webapp/pay?" + params.toString(),
+      redirectUrl: BASE_PATH + "/webapp/pay?" + params.toString(),
     });
   } catch (err) {
     captureException(err, String(txtMtrId || "anonymous"), {
       route: "cp2nus",
-      endpoint: "/webapp/bootstrap",
+      endpoint: BASE_PATH + "/webapp/bootstrap",
     });
     track("bootstrap_failed", {
       meterId: txtMtrId,
@@ -1178,6 +1187,7 @@ router.get("/webapp/pay", (req, res) => {
       txnRand,
       keyId,
       hmac,
+      basePath: BASE_PATH,
     }),
   );
 });
@@ -1313,15 +1323,18 @@ router.get("/webapp/result", (req, res) => {
 
   res.setHeader("Content-Type", "text/html; charset=UTF-8");
   return res.send(
-    renderFinalResultPage({
-      status,
-      merchantTxnRef: ref,
-      meterId,
-      amount,
-      reason,
-      address,
-      balance,
-    }),
+    renderFinalResultPage(
+      {
+        status,
+        merchantTxnRef: ref,
+        meterId,
+        amount,
+        reason,
+        address,
+        balance,
+      },
+      BASE_PATH,
+    ),
   );
 });
 

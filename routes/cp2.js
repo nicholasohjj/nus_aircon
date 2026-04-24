@@ -6,12 +6,7 @@ const { wrapper } = require("axios-cookiejar-support");
 const { CookieJar } = require("tough-cookie");
 const cheerio = require("cheerio");
 const { getMeterSummary } = require("../services/ore");
-const { PostHog } = require("posthog-node");
-
-const posthog = new PostHog(process.env.POSTHOG_API_KEY, {
-  host: process.env.POSTHOG_HOST || "https://eu.i.posthog.com",
-  enableExceptionAutocapture: true,
-});
+const { track, captureException } = require("../services/analytics");
 
 router.use(express.urlencoded({ extended: false }));
 router.use(express.json());
@@ -26,22 +21,6 @@ const DEFAULT_HEADERS = {
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
   "Upgrade-Insecure-Requests": "1",
 };
-
-function track(event, data = {}) {
-  const { meterId, ...properties } = data;
-  console.log(
-    JSON.stringify({
-      ts: new Date().toISOString(),
-      event,
-      ...data,
-    }),
-  );
-  posthog.capture({
-    distinctId: String(meterId || "anonymous"),
-    event,
-    properties: { meterId, ...properties, route: "cp2" },
-  });
-}
 
 function htmlDecode(str) {
   return String(str || "")
@@ -1155,7 +1134,7 @@ router.post("/purchase_flow", async (req, res) => {
         : 200;
     return res.status(status).json(out);
   } catch (error) {
-    posthog.captureException(error, "anonymous", {
+    captureException(error, "anonymous", {
       route: "cp2",
       endpoint: "/purchase_flow",
     });
@@ -1585,6 +1564,7 @@ router.get("/webapp", async (req, res) => {
   try {
     const meterSummary = await getMeterSummary(txtMtrId);
     track("webapp_opened", {
+      route: "cp2",
       meterId: txtMtrId,
       amount: txtAmount,
       ua: req.get("user-agent"),

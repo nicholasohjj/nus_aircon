@@ -75,7 +75,7 @@ function startTopUp(chatId) {
 }
 
 function getWebAppPath(hostel) {
-  return hostel === HOSTELS.CP2NUS ? "/webapp/new" : "/webapp";
+  return hostel === HOSTELS.CP2NUS ? "/webapp/c2pnus" : "/webapp";
 }
 
 async function setupTelegramUi() {
@@ -435,18 +435,12 @@ bot.on("text", async (ctx) => {
 (async () => {
   try {
     await setupTelegramUi();
-
-    // clear old webhook if any
     await bot.telegram.deleteWebhook({ drop_pending_updates: true });
-
-    await bot.launch({
-      dropPendingUpdates: true,
-    });
-
+    await bot.launch({ dropPendingUpdates: true });
     console.log("🤖 EVS Telegram bot running...");
   } catch (err) {
     console.error("Failed to launch Telegram bot:", err);
-    process.exit(1);
+    // Don't call process.exit(1) — let Express keep running
   }
 })();
 

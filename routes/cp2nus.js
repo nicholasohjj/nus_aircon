@@ -1,33 +1,13 @@
 require("dotenv").config();
 const express = require("express");
+const { Buffer } = require("buffer");
+const router = express.Router();
 const axios = require("axios");
 const { getMeterSummary } = require("../services/ore");
-const { PostHog } = require("posthog-node");
-const app = express();
+const { track, captureException } = require("../services/analytics");
 
-const posthog = new PostHog(process.env.POSTHOG_API_KEY, {
-  host: process.env.POSTHOG_HOST || "https://eu.i.posthog.com",
-  enableExceptionAutocapture: true,
-});
-
-function track(event, data = {}) {
-  const { meterId, ...properties } = data;
-  console.log(
-    JSON.stringify({
-      ts: new Date().toISOString(),
-      event,
-      ...data,
-    }),
-  );
-  posthog.capture({
-    distinctId: String(meterId || "anonymous"),
-    event,
-    properties: { meterId, ...properties, route: "cp2nus" },
-  });
-}
-
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
+router.use(express.urlencoded({ extended: false }));
+router.use(express.json());
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -155,36 +135,6 @@ function buildPayDisplayAddress(meterInfo) {
     : fullAddress.replace(/^Block\s+[^,]+,\s*/, "");
 
   return `${head}, ${tail}`.trim();
-}
-
-async function getCreditBalance(meterDisplayName) {
-  const meterId = String(meterDisplayName || "").trim();
-  if (!meterId) return null;
-
-  const resp = await axios.post(
-    "https://ore.evs.com.sg/evs1/get_credit_bal",
-    {
-      svcClaimDto: {
-        username: meterId,
-        user_id: null,
-        svcName: "oresvc",
-        endpoint: "/evs1/get_credit_bal",
-        scope: "self",
-        target: "meter.credit_balance",
-        operation: "read",
-      },
-      request: {
-        meter_displayname: meterId,
-      },
-    },
-    {
-      headers: ORE_HEADERS,
-      validateStatus: () => true,
-    },
-  );
-
-  if (resp.status !== 200) return null;
-  return resp.data?.credit_bal ?? null;
 }
 
 // ── Step 2: GET meter info + balance ──────────────────────────────────────────
@@ -1101,7 +1051,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
 
 // ── Main webapp entry ─────────────────────────────────────────────────────────
 
-app.get("/webapp", async (req, res) => {
+router.get("/webapp", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
   if (!txtMtrId || !txtAmount)
     return res.status(400).send(errorPage("Missing meter ID or amount."));
@@ -1118,7 +1068,7 @@ app.get("/webapp", async (req, res) => {
 
 // ── Bootstrap: runs all steps, returns redirect URL to /webapp/pay ─────────────
 
-app.get("/webapp/bootstrap", async (req, res) => {
+router.get("/webapp/bootstrap", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 
   if (!txtMtrId || !txtAmount) {
@@ -1164,7 +1114,7 @@ app.get("/webapp/bootstrap", async (req, res) => {
       redirectUrl: "/webapp/pay?" + params.toString(),
     });
   } catch (err) {
-    posthog.captureException(err, String(txtMtrId || "anonymous"), {
+    captureException(err, String(txtMtrId || "anonymous"), {
       route: "cp2nus",
       endpoint: "/webapp/bootstrap",
     });
@@ -1187,7 +1137,7 @@ app.get("/webapp/bootstrap", async (req, res) => {
 
 // ── Card payment page ─────────────────────────────────────────────────────────
 
-app.get("/webapp/pay", (req, res) => {
+router.get("/webapp/pay", (req, res) => {
   const {
     txtMtrId,
     txtAmount,
@@ -1230,7 +1180,7 @@ app.get("/webapp/pay", (req, res) => {
 
 // ── eNETS pay proxy ───────────────────────────────────────────────────────────
 
-app.post(
+router.post(
   "/webapp/enets_pay",
   express.urlencoded({ extended: false, limit: "10mb" }),
   async (req, res) => {
@@ -1335,7 +1285,7 @@ app.post(
 
 // ── Result page ───────────────────────────────────────────────────────────────
 
-app.get("/webapp/result", (req, res) => {
+router.get("/webapp/result", (req, res) => {
   const {
     status = "unknown",
     ref = "",
@@ -1370,15 +1320,4 @@ app.get("/webapp/result", (req, res) => {
   );
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-
-app.listen(3001, () => console.log("Server running on http://localhost:3001"));
-
-process.once("SIGINT", async () => {
-  await posthog.shutdown();
-  process.exit(0);
-});
-process.once("SIGTERM", async () => {
-  await posthog.shutdown();
-  process.exit(0);
-});
+module.exports = router;

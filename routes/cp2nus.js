@@ -15,17 +15,6 @@ const EVS_API_BASE = "https://p-1.evs.com.sg";
 const ENETS_PP_HOST = "https://enetspp-nus-live.evs.com.sg";
 const NETS_API_HOST = "https://api.nets.com.sg";
 
-const ORE_HEADERS = {
-  Accept: "application/json, text/plain, */*",
-  "Accept-Language": "en-US,en;q=0.9",
-  "Content-Type": "application/json; charset=UTF-8",
-  Origin: "https://cp2.evs.com.sg",
-  Referer: "https://cp2.evs.com.sg/",
-  "User-Agent":
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-  Authorization: "Bearer",
-};
-
 const FIXED_USER_ID = "5771";
 
 const DEFAULT_HEADERS = {
@@ -198,6 +187,8 @@ async function fetchNetsFields({ req, sign, username, amount, address }) {
 
 // ── Step 3c: POST /GW2/TxnReqListener → RSA key + txnRand ────────────────────
 
+// ── Step 3c: POST /GW2/TxnReqListener → RSA key + txnRand ────────────────────
+
 async function callTxnReqListener({ txnReq, keyId, hmac }) {
   let msgObj;
   try {
@@ -239,15 +230,25 @@ async function callTxnReqListener({ txnReq, keyId, hmac }) {
 
   const responseHmac = netsResp.headers?.hmac || null;
 
+  // paymtSvcInfoList[0].netsMid (e.g. "807574000") is the acquiring MID
+  // used by panSubmitForm — distinct from top-level netsMid ("UMID_807572000")
+  const paymtNetsMid =
+    Array.isArray(msg.paymtSvcInfoList) && msg.paymtSvcInfoList.length > 0
+      ? msg.paymtSvcInfoList[0].netsMid || null
+      : null;
+
   return {
     rsaModulus,
     rsaExponent,
     netsTxnRef: msg.netsTxnRef || null,
-    netsMid: msg.netsMid || null,
+    netsMid: msg.netsMid || null, // UMID_xxxxxx  (top-level)
+    paymtNetsMid: paymtNetsMid, // 807574000    (panSubmitForm)
     merchantTxnRef: msg.merchantTxnRef || null,
-    txnRand: msg.txnRand || null, // needed for credit/init
-    keyId,
-    hmac: responseHmac || hmac,
+    txnRand: msg.txnRand || null,
+    routeTo: msg.routeTo || "FEH", // read from response, not hardcoded
+    stageRespCode: msg.stageRespCode || null,
+    keyId: msg.apiKey || keyId, // prefer apiKey from response body
+    hmac: responseHmac || hmac, // response hmac differs from request
     txnAmount: msg.txnAmount || null,
   };
 }
@@ -368,6 +369,7 @@ async function submitPanForm({
   jsessionId,
   txnRand,
   netsMid,
+  netsTxnRef,
   merchantTxnRef,
   enc,
   name,
@@ -404,7 +406,7 @@ async function submitPanForm({
     pageId: "payment_page",
     button: "submit",
     txnStepStatus: "",
-    netsTxnRef: "",
+    netsTxnRef,
     gexp: "",
     gmod: "",
     txnAmount: "",
@@ -1104,6 +1106,7 @@ router.get("/webapp/bootstrap", async (req, res) => {
       netsMid: boot.nets.netsMid || "",
       netsTxnRef: boot.nets.netsTxnRef || "",
       merchantTxnRef: boot.nets.merchantTxnRef || "",
+      paymtNetsMid: boot.nets.paymtNetsMid || "",
       txnRand: boot.nets.txnRand || "",
       keyId: boot.nets.keyId || "",
       hmac: boot.nets.hmac || "",
@@ -1146,6 +1149,7 @@ router.get("/webapp/pay", (req, res) => {
     n,
     e,
     netsMid,
+    paymtNetsMid = "",
     netsTxnRef,
     merchantTxnRef,
     txnRand = "",
@@ -1164,7 +1168,7 @@ router.get("/webapp/pay", (req, res) => {
     cardPaymentPage({
       n,
       e,
-      netsMid,
+      netsMid: paymtNetsMid || netsMid,
       netsTxnRef,
       merchantTxnRef: merchantTxnRef || "",
       amount: txtAmount,
@@ -1241,6 +1245,7 @@ router.post(
         jsessionId,
         txnRand: txnRand || "",
         netsMid,
+        netsTxnRef: netsTxnRef || "",
         merchantTxnRef,
         enc,
         name: name || "",

@@ -313,10 +313,11 @@ bot.on("text", async (ctx) => {
         lines.push(`💰 *Balance:* SGD ${bal.toFixed(2)}`);
       }
 
-      const usageText = formatUsageSummary(
+      const usageText = await formatUsageSummary(
         usage.history,
         summary.credit_bal,
         7,
+        text,
       );
       if (usageText) {
         lines.push("");
@@ -375,8 +376,12 @@ bot.on("text", async (ctx) => {
       lines.push("");
       lines.push("*Daily consumption (last 7 days)*");
       lines.push(
-        formatUsageSummary(usage.history, summary.credit_bal, 7) ||
-          "No usage data available.",
+        (await formatUsageSummary(
+          usage.history,
+          summary.credit_bal,
+          7,
+          text,
+        )) || "No usage data available.",
       );
 
       return ctx.replyWithMarkdown(lines.join("\n"), mainKeyboard());

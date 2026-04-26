@@ -121,6 +121,35 @@ async function getMeterUsage(meterDisplayName, days = 7) {
   };
 }
 
+async function getRecentUsageStat(meterDisplayName, lookBackHours = 168) {
+  const meterId = String(meterDisplayName || "").trim();
+  if (!meterId) return null;
+
+  const resp = await axios.post(
+    "https://ore.evs.com.sg/cp/get_recent_usage_stat",
+    {
+      svcClaimDto: {
+        username: meterId,
+        user_id: null,
+        svcName: "oresvc",
+        endpoint: "/cp/get_recent_usage_stat",
+        scope: "self",
+        target: "meter.reading",
+        operation: "list",
+      },
+      request: {
+        meter_displayname: meterId,
+        look_back_hours: lookBackHours,
+        convert_to_money: true,
+      },
+    },
+    { headers: ORE_HEADERS, validateStatus: () => true },
+  );
+
+  if (resp.status !== 200) return null;
+  return resp.data?.usage_stat?.kwh_rank_in_building || null;
+}
+
 function analyzeUsage(history = [], creditBal = null) {
   const diffs = history
     .map((x) => Number(x?.reading_diff))
@@ -193,8 +222,14 @@ function analyzeUsage(history = [], creditBal = null) {
   };
 }
 
-function formatUsageSummary(history = [], creditBal = null, days = 7) {
+async function formatUsageSummary(
+  history = [],
+  creditBal = null,
+  days = 7,
+  meterId = null,
+) {
   const a = analyzeUsage(history, creditBal);
+
   const lines = [];
 
   if (a.lastDay != null) {
@@ -206,6 +241,22 @@ function formatUsageSummary(history = [], creditBal = null, days = 7) {
   if (a.total != null) {
     lines.push(`🧮 *${days}-day total:* ${a.total.toFixed(2)}`);
   }
+
+  if (meterId) {
+    try {
+      const rank = await getRecentUsageStat(meterId);
+      if (rank) {
+        const pct = (Number(rank.rank_val) * 100).toFixed(0);
+        const buildingAvg = Number(rank.ref_val).toFixed(2);
+        lines.push(
+          `🏆 *Building rank:* top ${100 - pct}% (avg in building: ${buildingAvg} kWh/7d)`,
+        );
+      }
+    } catch {
+      // silently skip if rank fetch fails
+    }
+  }
+
   if (a.warnings.length) {
     lines.push("");
     lines.push(...a.warnings);

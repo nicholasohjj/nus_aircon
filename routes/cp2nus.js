@@ -10,7 +10,7 @@ const {
   isValidMeterId,
   isValidAmount,
 } = require("../services/vars");
-const { escHtml, htmlDecode} = require("../services/utils")
+const { escHtml, htmlDecode } = require("../services/utils");
 
 router.use(express.urlencoded({ extended: false }));
 router.use(express.json());

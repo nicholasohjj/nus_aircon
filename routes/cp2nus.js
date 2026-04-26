@@ -5,7 +5,11 @@ const router = express.Router();
 const axios = require("axios");
 const { getMeterSummary } = require("../services/ore");
 const { track, captureException } = require("../services/analytics");
-const { isValidMeterId, isValidAmount } = require("../services/vars");
+const {
+  isCp2Meter,
+  isValidMeterId,
+  isValidAmount,
+} = require("../services/vars");
 router.use(express.urlencoded({ extended: false }));
 router.use(express.json());
 
@@ -275,46 +279,6 @@ async function callTxnReqListener({ txnReq, keyId, hmac }) {
   };
 }
 
-// ── Step 0: Reject cp2 meters ─────────────────────────────────────────────────
-
-async function checkNotCp2Meter(txtMtrId) {
-  const checkResp = await axios.post(
-    "https://evs.com.sg/EVSWebPOS/loginServlet",
-    new URLSearchParams({
-      txtMtrId: String(txtMtrId),
-      btnLogin: "Submit",
-      radRetail: "1",
-    }).toString(),
-    {
-      headers: {
-        ...DEFAULT_HEADERS,
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-        "Upgrade-Insecure-Requests": "1",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      validateStatus: () => true,
-      timeout: 8000,
-    },
-  );
-
-  const body = String(checkResp.data || "");
-  console.log(
-    "[meter_system_check] HTTP",
-    checkResp.status,
-    "body length",
-    body.length,
-  );
-  console.log("[meter_system_check] body snippet:", body.slice(0, 400));
-
-  const isCp2 =
-    body.includes("<title>EVS POS Package Selection Page</title>") ||
-    body.includes('action="/EVSWebPOS/selectOfferServlet"') ||
-    body.includes("Please confirm you are purchasing for the above premise");
-
-  console.log("[meter_system_check] isCp2:", isCp2);
-  return isCp2;
-}
 // ── Combined bootstrap flow ───────────────────────────────────────────────────
 
 async function runBootstrap({ txtMtrId, txtAmount }) {
@@ -348,10 +312,10 @@ async function runBootstrap({ txtMtrId, txtAmount }) {
       };
 
     debug.stage = "meter_system_check";
-    let isCp2 = false;
+    let cp2Check = false;
 
     try {
-      isCp2 = await checkNotCp2Meter(txtMtrId);
+      cp2Check = await isCp2Meter(txtMtrId);
     } catch (checkErr) {
       // Network failure during check — log and proceed rather than block
       console.warn(
@@ -359,7 +323,7 @@ async function runBootstrap({ txtMtrId, txtAmount }) {
         checkErr.message,
       );
     }
-    if (isCp2) {
+    if (cp2Check.ok) {
       return {
         ok: false,
         ...debug,

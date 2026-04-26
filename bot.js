@@ -80,7 +80,7 @@ function startTopUp(chatId) {
 }
 
 function getWebAppPath(hostel) {
-  return hostel === HOSTELS.CP2NUS ? "/webapp/cp2nus" : "/webapp/";
+  return hostel === HOSTELS.CP2NUS ? "/cp2nus/webapp" : "/webapp/";
 }
 
 async function setupTelegramUi() {

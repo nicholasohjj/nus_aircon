@@ -26,6 +26,9 @@ The wizard has completed a deep integration of your EVS electricity top-up Teleg
 - Added `posthog.captureException()` in the bootstrap error catch block.
 - Added `payment_completed` / `payment_failed` event capture in the `/webapp/result` handler.
 - Added graceful `posthog.shutdown()` on `SIGINT`/`SIGTERM` to ensure buffered events are flushed before the process exits.
+- Added `webapp_opened` event capture in the `/webapp` handler (mirrors the cp2 route).
+- Added `payment_attempted` event capture in the `/webapp/enets_pay` handler.
+- Added `captureException()` in the `/webapp/enets_pay` error catch block.
 
 ### `.env`
 
@@ -58,6 +61,8 @@ The wizard has completed a deep integration of your EVS electricity top-up Teleg
 | `bootstrap_failed`        | Payment bootstrap failed (cp2nus flow)                       | `routes/cp2nus.js` (new)                    |
 | `payment_completed`       | Payment result page reached with success status (cp2nus)     | `routes/cp2nus.js` (new)                    |
 | `payment_failed`          | Payment result page reached with non-success status (cp2nus) | `routes/cp2nus.js` (new)                    |
+| `webapp_opened`           | User opened the cp2nus payment WebApp                        | `routes/cp2nus.js` (new)                    |
+| `payment_attempted`       | Card details submitted; cp2nus eNETS payment flow initiated  | `routes/cp2nus.js` (new)                    |
 
 ## Next steps
 
@@ -69,6 +74,8 @@ We've built some insights and a dashboard for you to keep an eye on user behavio
 - **Bot command usage** (weekly breakdown of /topup, /balance, /usage, /start): https://eu.posthog.com/project/165245/insights/HAXziISd
 - **Bootstrap success rate** (started vs succeeded vs failed): https://eu.posthog.com/project/165245/insights/4ZQd0ADm
 - **Error events over time** (all error categories in one view): https://eu.posthog.com/project/165245/insights/bBbJHND1
+- **cp2nus WebApp → Payment funnel** (`webapp_opened` → `payment_attempted` → `payment_completed`): https://eu.posthog.com/project/165245/insights/TM0ASb5q
+- **cp2nus payment_attempted over time** (daily payment volume for UTown/RVRC route): https://eu.posthog.com/project/165245/insights/F1qJ33Wb
 
 ### Agent skill
 

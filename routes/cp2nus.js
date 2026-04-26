@@ -1235,6 +1235,12 @@ router.get("/webapp", async (req, res) => {
 
   try {
     const meterSummary = await getMeterSummary(txtMtrId);
+    track("webapp_opened", {
+      meterId: txtMtrId,
+      amount: txtAmount,
+      route: "cp2nus",
+      ua: req.get("user-agent"),
+    });
     res.setHeader("Content-Type", "text/html; charset=UTF-8");
     return res.send(loadingPage(txtMtrId, txtAmount, meterSummary, BASE_PATH));
   } catch {
@@ -1416,6 +1422,13 @@ router.post(
         });
       }
 
+      track("payment_attempted", {
+        meterId,
+        amount,
+        merchantTxnRef,
+        route: "cp2nus",
+      });
+
       const browserInfo = {
         javaEnabled: browserJavaEnabled || "false",
         language: browserLanguage || "en-US",
@@ -1497,6 +1510,10 @@ router.post(
       });
     } catch (err) {
       console.error("[enets_pay]", err.message);
+      captureException(err, String(req.body?.meterId || "anonymous"), {
+        route: "cp2nus",
+        merchantTxnRef: req.body?.merchantTxnRef || "",
+      });
       return res.status(500).json({ ok: false, error: err.message });
     }
   },

@@ -58,7 +58,11 @@ function resetSession(chatId) {
 }
 
 function mainKeyboard() {
-  return Markup.keyboard([["⚡ Top Up"]]).resize();
+  return Markup.keyboard([
+    ["⚡ Top Up"],
+    ["💰 Balance", "📊 Usage"],
+    ["ℹ️ Help"],
+  ]).resize();
 }
 
 function hostelKeyboard() {
@@ -89,6 +93,61 @@ async function setupTelegramUi() {
   ]);
 }
 
+bot.hears("💰 Balance", async (ctx) => {
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
+  track("balance_button", { chatId });
+
+  const session = getSession(chatId);
+  session.stage = "awaiting_meter_id_balance";
+
+  return ctx.reply(
+    "🔌 Please enter your 8-digit Meter ID to check your balance:",
+    Markup.keyboard([["❌ Cancel"]]).resize(),
+  );
+});
+
+bot.hears("📊 Usage", async (ctx) => {
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
+  track("usage_button", { chatId });
+
+  const session = getSession(chatId);
+  session.stage = "awaiting_meter_id_usage";
+
+  return ctx.reply(
+    "🔌 Please enter your 8-digit Meter ID to view the last 7 days of usage:",
+    Markup.keyboard([["❌ Cancel"]]).resize(),
+  );
+});
+
+bot.hears("ℹ️ Help", async (ctx) => {
+  return ctx.replyWithMarkdown(
+    `ℹ️ *EVS Top-Up Help*\n\n` +
+      `*Supported hostels*\n` +
+      `• PGPR\n` +
+      `• Houses @ PGP\n` +
+      `• Residential Colleges\n` +
+      `• NUS College\n` +
+      `  → uses cp2.evs.com.sg\n` +
+      `• UTown Residence\n` +
+      `• RVRC\n` +
+      `  → uses cp2nus.evs.com.sg\n\n` +
+      `*Accepted amount*\n` +
+      `• Minimum: $6.00 SGD\n` +
+      `• Maximum: $50.00 SGD\n\n` +
+      `*Useful commands*\n` +
+      `• /topup — start a new top-up\n` +
+      `• /balance — check meter balance\n` +
+      `• /usage — show recent daily usage\n` +
+      `• /cancel — cancel the current flow\n` +
+      `• /help — show this message`,
+    mainKeyboard(),
+  );
+});
+
 bot.hears("⚡ Top Up", async (ctx) => {
   const chatId = ctx.chat?.id;
   if (!chatId) return;
@@ -103,7 +162,7 @@ bot.start(async (ctx) => {
   if (chatId) resetSession(chatId);
 
   return ctx.reply(
-    "⚡ EVS Electricity Top-Up\n\nChoose an option below or use /topup.",
+    "⚡ EVS Electricity Top-Up\n\nChoose an option below:",
     mainKeyboard(),
   );
 });

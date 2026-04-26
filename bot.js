@@ -15,6 +15,11 @@ const {
   captureException,
   shutdownAnalytics,
 } = require("./services/analytics");
+const {
+  isCp2Meter,
+  isValidAmount,
+  isValidMeterId,
+} = require("./services/vars");
 const bot = new Telegraf(TOKEN);
 
 function isHttpsUrl(url) {
@@ -24,10 +29,6 @@ function isHttpsUrl(url) {
   } catch {
     return false;
   }
-}
-
-function isValidMeterId(value) {
-  return /^\d{8}$/.test(String(value).trim());
 }
 
 const HOSTELS = {
@@ -328,7 +329,7 @@ bot.on("text", async (ctx) => {
   if (session.stage === "awaiting_amount") {
     const amt = Number(text);
 
-    if (!Number.isFinite(amt) || amt < 6 || amt > 50) {
+    if (!isValidAmount(amt)) {
       return ctx.reply("⚠️ Please enter a valid amount between $6 and $50.");
     }
 
@@ -344,6 +345,87 @@ bot.on("text", async (ctx) => {
       meterId: session.txtMtrId,
       amount: amountDollars,
     });
+
+    if (session.hostel === HOSTELS.CP2) {
+      await ctx.reply("🔍 Verifying meter with EVS WebPOS before payment…");
+
+      try {
+        const cp2Check = await isCp2Meter(session.txtMtrId);
+
+        track("cp2_webpos_meter_check", {
+          chatId,
+          meterId: session.txtMtrId,
+          amount: amountDollars,
+          result: cp2Check.result,
+          status: cp2Check.status,
+        });
+
+        if (!cp2Check.ok) {
+          session.stage = "awaiting_meter_id";
+
+          return ctx.replyWithMarkdown(
+            `⚠️ I couldn't confirm this meter on the CP2 payment page.\n\n` +
+              `Meter ID: \`${session.txtMtrId}\`\n\n` +
+              `Please re-enter your 8-digit Meter ID:`,
+            Markup.keyboard([["❌ Cancel"]]).resize(),
+          );
+        }
+      } catch (err) {
+        track("cp2_webpos_meter_check_error", {
+          chatId,
+          meterId: session.txtMtrId,
+          amount: amountDollars,
+          error: err.message,
+        });
+
+        session.stage = "awaiting_meter_id";
+
+        return ctx.reply(
+          "⚠️ I couldn't verify this meter with EVS right now. Please try entering the Meter ID again.",
+          Markup.keyboard([["❌ Cancel"]]).resize(),
+        );
+      }
+    }
+
+    if (session.hostel === HOSTELS.CP2NUS) {
+      await ctx.reply("🔍 Verifying meter with EVS WebPOS before payment…");
+
+      try {
+        const cp2Check = await isCp2Meter(session.txtMtrId);
+
+        track("cp2_webpos_meter_check", {
+          chatId,
+          meterId: session.txtMtrId,
+          amount: amountDollars,
+          status: cp2Check.status,
+        });
+
+        if (cp2Check.ok) {
+          session.stage = "awaiting_meter_id";
+
+          return ctx.replyWithMarkdown(
+            `⚠️ This meter is associated with the CP2 payment page, not CP2NUS.\n\n` +
+              `Meter ID: \`${session.txtMtrId}\`\n\n` +
+              `Please re-enter your 8-digit Meter ID:`,
+            Markup.keyboard([["❌ Cancel"]]).resize(),
+          );
+        }
+      } catch (err) {
+        track("cp2_webpos_meter_check_error", {
+          chatId,
+          meterId: session.txtMtrId,
+          amount: amountDollars,
+          error: err.message,
+        });
+
+        session.stage = "awaiting_meter_id";
+
+        return ctx.reply(
+          "⚠️ I couldn't verify this meter with EVS right now. Please try entering the Meter ID again.",
+          Markup.keyboard([["❌ Cancel"]]).resize(),
+        );
+      }
+    }
 
     session.stage = "idle";
 

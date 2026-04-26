@@ -210,10 +210,14 @@ bot.on("text", async (ctx) => {
     }
 
     if (text === "🏠 UTown Residence / RVRC") {
-      track("hostel_selected_blocked", { chatId, hostel: "cp2nus" });
+      session.hostel = HOSTELS.CP2NUS;
+      session.stage = "awaiting_meter_id";
+
+      track("hostel_selected", { chatId, hostel: "cp2nus" });
+
       return ctx.reply(
-        "⚠️ UTown Residence / RVRC is not available yet. Please select PGPR / PGP / RC / NUSC for now.",
-        hostelKeyboard(),
+        "🔌 Please enter your 8-digit Meter ID:",
+        Markup.keyboard([["❌ Cancel"]]).resize(),
       );
     }
 
@@ -388,15 +392,16 @@ bot.on("text", async (ctx) => {
     }
 
     if (session.hostel === HOSTELS.CP2NUS) {
-      await ctx.reply("🔍 Verifying meter with EVS WebPOS before payment…");
+      await ctx.reply("🔍 Checking that this meter is not a CP2 meter…");
 
       try {
         const cp2Check = await isCp2Meter(session.txtMtrId);
 
-        track("cp2_webpos_meter_check", {
+        track("cp2nus_meter_check", {
           chatId,
           meterId: session.txtMtrId,
           amount: amountDollars,
+          result: cp2Check.result,
           status: cp2Check.status,
         });
 

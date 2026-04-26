@@ -4,10 +4,10 @@ A Telegram bot and web server that lets NUS hostel residents top up their EVS el
 
 ## Supported Hostels
 
-| Hostel Group | EVS System |
-|---|---|
-| PGPR, Houses @ PGP, Residential Colleges, NUS College | `cp2.evs.com.sg` |
-| UTown Residence, RVRC | `cp2nus.evs.com.sg` |
+| Hostel Group                                          | EVS System          |
+| ----------------------------------------------------- | ------------------- |
+| PGPR, Houses @ PGP, Residential Colleges, NUS College | `cp2.evs.com.sg`    |
+| UTown Residence, RVRC                                 | `cp2nus.evs.com.sg` |
 
 ## Features
 
@@ -39,12 +39,14 @@ Telegram Bot (telegraf)
 ### Payment Flow
 
 **CP2 (PGPR / PGP / RC / NUSC)**
+
 1. Logs into EVS WebPOS, selects offer, retrieves `merchant_txn_ref`
 2. Calls eNETS `creditpayment.jsp` to get eNETS fields
 3. User submits RSA-encrypted card details
 4. Server proxies to eNETS `uCredit/pay`, then posts result back to EVS `transSumServlet`
 
 **CP2NUS (UTown / RVRC)**
+
 1. Calls EVS `enets/init_pay` to create a transaction
 2. Fetches RSA public key and HMAC token via eNETS `TxnReqListener`
 3. User submits RSA-encrypted card details
@@ -86,14 +88,14 @@ Or run both together if you have a combined entry point.
 
 ## Bot Commands
 
-| Command | Description |
-|---|---|
-| `/start` | Show the main menu |
-| `/topup` | Start an electricity top-up |
-| `/balance` | Check meter balance |
-| `/usage` | Show last 7 days of usage |
-| `/cancel` | Cancel the current flow |
-| `/help` | Show help information |
+| Command    | Description                 |
+| ---------- | --------------------------- |
+| `/start`   | Show the main menu          |
+| `/topup`   | Start an electricity top-up |
+| `/balance` | Check meter balance         |
+| `/usage`   | Show last 7 days of usage   |
+| `/cancel`  | Cancel the current flow     |
+| `/help`    | Show help information       |
 
 ## Project Structure
 

@@ -10,6 +10,8 @@ const {
   isValidMeterId,
   isValidAmount,
 } = require("../services/vars");
+const { escHtml, htmlDecode} = require("../services/utils")
+
 router.use(express.urlencoded({ extended: false }));
 router.use(express.json());
 
@@ -30,23 +32,6 @@ const DEFAULT_HEADERS = {
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function escHtml(str) {
-  return String(str || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function htmlDecode(str) {
-  return String(str || "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
-}
 
 function extractHiddenField(html, name) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

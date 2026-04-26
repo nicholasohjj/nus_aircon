@@ -79,5 +79,6 @@ module.exports = {
   WEBPOS_HEADERS,
   isCp2Meter,
   isValidMeterId,
+  classifyLoginResponse,
   isValidAmount,
 };

@@ -7,6 +7,7 @@ const { CookieJar } = require("tough-cookie");
 const cheerio = require("cheerio");
 const { getMeterSummary } = require("../services/ore");
 const { track, captureException } = require("../services/analytics");
+const { isValidAmount, isValidMeterId } = require("../services/vars");
 
 router.use(express.urlencoded({ extended: false }));
 router.use(express.json());
@@ -922,6 +923,14 @@ async function runPurchaseFlow({ txtMtrId, txtAmount }) {
   if (txtAmount === undefined || txtAmount === null || txtAmount === "")
     return { ...result, error: "Missing txtAmount" };
 
+  if (!isValidMeterId(txtMtrId)) {
+    return { ...result, error: "Meter ID must be exactly 8 digits." };
+  }
+
+  if (!isValidAmount(txtAmount)) {
+    return { ...result, error: "Amount must be between $6.00 and $50.00." };
+  }
+
   const cleanedAmount = String(txtAmount).replace(/[^0-9.]/g, "");
   const amountDollars = Number(cleanedAmount);
   if (!Number.isFinite(amountDollars) || amountDollars <= 0) {
@@ -1202,6 +1211,22 @@ router.get("/webapp/bootstrap", async (req, res) => {
       ok: false,
       stage: "init",
       error: "Missing meter ID or amount.",
+    });
+  }
+
+  if (!isValidMeterId(txtMtrId)) {
+    return res.status(400).json({
+      ok: false,
+      stage: "init",
+      error: "Meter ID must be exactly 8 digits.",
+    });
+  }
+
+  if (!isValidAmount(txtAmount)) {
+    return res.status(400).json({
+      ok: false,
+      stage: "init",
+      error: "Amount must be between $6.00 and $50.00.",
     });
   }
 
@@ -1561,6 +1586,18 @@ router.get("/webapp", async (req, res) => {
 
   if (!txtMtrId || !txtAmount) {
     return res.status(400).send(errorPage("Missing meter ID or amount."));
+  }
+
+  if (!isValidMeterId(txtMtrId)) {
+    return res
+      .status(400)
+      .send(errorPage("Meter ID must be exactly 8 digits."));
+  }
+
+  if (!isValidAmount(txtAmount)) {
+    return res
+      .status(400)
+      .send(errorPage("Amount must be between $6.00 and $50.00."));
   }
 
   try {

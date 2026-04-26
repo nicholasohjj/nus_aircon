@@ -5,7 +5,7 @@ const router = express.Router();
 const axios = require("axios");
 const { getMeterSummary } = require("../services/ore");
 const { track, captureException } = require("../services/analytics");
-
+const { isValidMeterId, isValidAmount } = require("../services/vars");
 router.use(express.urlencoded({ extended: false }));
 router.use(express.json());
 
@@ -150,6 +150,27 @@ function buildEnetsPayUrl({ req, sign, username, amount, address }) {
 
 // ── Step 3b: GET /pay → parse txnReq / keyId / hmac ──────────────────────────
 
+async function fetchEnvJsp() {
+  const resp = await axios.get(
+    "https://www2.enets.sg/GW2/pluginpages/env.jsp",
+    {
+      headers: {
+        ...DEFAULT_HEADERS,
+        Accept: "*/*",
+        "Sec-Fetch-Site": "cross-site",
+        "Sec-Fetch-Mode": "no-cors",
+        "Sec-Fetch-Dest": "script",
+        Referer: ENETS_PP_HOST + "/",
+      },
+      validateStatus: () => true,
+    },
+  );
+
+  const setCookie = [resp.headers["set-cookie"] || []].flat().join("; ");
+  const sessionMatch = setCookie.match(/JSESSIONID=([^;]+)/i);
+  return sessionMatch ? sessionMatch[1] : null;
+}
+
 async function fetchNetsFields({ req, sign, username, amount, address }) {
   const payUrl = buildEnetsPayUrl({ req, sign, username, amount, address });
 
@@ -254,6 +275,46 @@ async function callTxnReqListener({ txnReq, keyId, hmac }) {
   };
 }
 
+// ── Step 0: Reject cp2 meters ─────────────────────────────────────────────────
+
+async function checkNotCp2Meter(txtMtrId) {
+  const checkResp = await axios.post(
+    "https://evs.com.sg/EVSWebPOS/loginServlet",
+    new URLSearchParams({
+      txtMtrId: String(txtMtrId),
+      btnLogin: "Submit",
+      radRetail: "1",
+    }).toString(),
+    {
+      headers: {
+        ...DEFAULT_HEADERS,
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Upgrade-Insecure-Requests": "1",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      validateStatus: () => true,
+      timeout: 8000,
+    },
+  );
+
+  const body = String(checkResp.data || "");
+  console.log(
+    "[meter_system_check] HTTP",
+    checkResp.status,
+    "body length",
+    body.length,
+  );
+  console.log("[meter_system_check] body snippet:", body.slice(0, 400));
+
+  const isCp2 =
+    body.includes("<title>EVS POS Package Selection Page</title>") ||
+    body.includes('action="/EVSWebPOS/selectOfferServlet"') ||
+    body.includes("Please confirm you are purchasing for the above premise");
+
+  console.log("[meter_system_check] isCp2:", isCp2);
+  return isCp2;
+}
 // ── Combined bootstrap flow ───────────────────────────────────────────────────
 
 async function runBootstrap({ txtMtrId, txtAmount }) {
@@ -268,9 +329,46 @@ async function runBootstrap({ txtMtrId, txtAmount }) {
     if (!txtMtrId) throw new Error("Missing txtMtrId");
     if (!txtAmount) throw new Error("Missing txtAmount");
 
+    if (!isValidMeterId(txtMtrId)) {
+      return {
+        ok: false,
+        ...debug,
+        code: "INVALID_METER_ID",
+        error: "Meter ID must be exactly 8 digits.",
+      };
+    }
+
     const amount = Number(String(txtAmount).replace(/[^0-9.]/g, ""));
-    if (!Number.isFinite(amount) || amount <= 0)
-      throw new Error("Invalid txtAmount");
+    if (!isValidAmount(txtAmount))
+      return {
+        ok: false,
+        ...debug,
+        code: "INVALID_AMOUNT",
+        error: "Amount must be between $6.00 and $50.00.",
+      };
+
+    debug.stage = "meter_system_check";
+    let isCp2 = false;
+
+    try {
+      isCp2 = await checkNotCp2Meter(txtMtrId);
+    } catch (checkErr) {
+      // Network failure during check — log and proceed rather than block
+      console.warn(
+        "[meter_system_check] check request failed, proceeding:",
+        checkErr.message,
+      );
+    }
+    if (isCp2) {
+      return {
+        ok: false,
+        ...debug,
+        code: "WRONG_SYSTEM",
+        error:
+          "This meter belongs to the CP2 system and cannot be topped up here. " +
+          "Please use the CP2 portal instead.",
+      };
+    }
 
     debug.stage = "init_pay";
     const initResp = await initPay({ username: txtMtrId, amount });
@@ -327,7 +425,9 @@ async function runBootstrap({ txtMtrId, txtAmount }) {
 // ── Step 4a: POST /GW2/credit/init ───────────────────────────────────────────
 // Establishes the NETS credit session. Returns jsessionId cookie.
 
-async function callCreditInit({ txnRand, keyId, hmac }) {
+async function callCreditInit({ txnRand, keyId, hmac, jsessionId }) {
+  const sessionPath = jsessionId ? `;jsessionid=${jsessionId}` : ""; // ← add this
+
   const body = new URLSearchParams({
     txnRand,
     paymentMode: "CC_1",
@@ -341,26 +441,31 @@ async function callCreditInit({ txnRand, keyId, hmac }) {
     tsMerchMsg: "",
   }).toString();
 
-  const resp = await axios.post("https://www2.enets.sg/GW2/credit/init", body, {
-    headers: {
-      ...DEFAULT_HEADERS,
-      "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-      Accept: "*/*",
-      Origin: ENETS_PP_HOST,
-      Referer: ENETS_PP_HOST + "/",
-      Hmac: hmac,
-      Keyid: keyId,
+  const resp = await axios.post(
+    `https://www2.enets.sg/GW2/credit/init${sessionPath}`,
+    body,
+    {
+      headers: {
+        ...DEFAULT_HEADERS,
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        Accept: "*/*",
+        Origin: ENETS_PP_HOST,
+        Referer: ENETS_PP_HOST + "/",
+        Hmac: hmac,
+        Keyid: keyId,
+        ...(jsessionId ? { Cookie: `JSESSIONID=${jsessionId}` } : {}),
+      },
+      validateStatus: () => true,
+      maxRedirects: 0,
     },
-    validateStatus: () => true,
-    maxRedirects: 0,
-  });
+  );
 
   // Extract JSESSIONID from Set-Cookie
   const setCookie = [resp.headers["set-cookie"] || []].flat().join("; ");
   const sessionMatch = setCookie.match(/JSESSIONID=([^;]+)/i);
-  const jsessionId = sessionMatch ? sessionMatch[1] : null;
+  const returnedSession = sessionMatch ? sessionMatch[1] : jsessionId;
 
-  return { jsessionId, status: resp.status };
+  return { jsessionId: returnedSession, status: resp.status };
 }
 
 // ── Step 4b: POST /GW2/credit/panSubmitForm ───────────────────────────────────
@@ -381,7 +486,6 @@ async function submitPanForm({
   browserInfo = {},
 }) {
   // expiryYear arrives as 4-digit string ("2027") — pass it through as-is
-  const sessionPath = jsessionId ? `;jsessionid=${jsessionId}` : "";
 
   const body = new URLSearchParams({
     netsMid,
@@ -423,7 +527,7 @@ async function submitPanForm({
   }).toString();
 
   const resp = await axios.post(
-    `https://www2.enets.sg/GW2/credit/panSubmitForm${sessionPath}`,
+    `https://www2.enets.sg/GW2/credit/panSubmitForm`,
     body,
     {
       headers: {
@@ -464,33 +568,121 @@ async function submitPanForm({
     throw new Error(errText);
   }
 
-  return { message, hmac, keyId, action };
+  console.log("[panSubmit] message length:", message?.length);
+  console.log("[panSubmit] message contains +:", message?.includes("+"));
+  console.log("[panSubmit] message contains %2B:", message?.includes("%2B"));
+  console.log("[panSubmit] action:", action);
+  console.log("[panSubmit] hmac:", hmac);
+  console.log("[panSubmit] keyId:", keyId);
+  // Log full message for debugging — remove before production
+  console.log("[panSubmit] full message:", message);
+
+  let preParsed = null;
+  try {
+    const msgObj = JSON.parse(decodeURIComponent(message));
+    const status = msgObj?.msg?.netsTxnStatus;
+    const msg = msgObj?.msg || {};
+
+    if (status === "1" || msgObj?.ss === "0") {
+      preParsed = {
+        status: "failure",
+        merchantTxnRef: msg.merchantTxnRef || null,
+        meterId: null,
+        amount: null,
+        stageRespCode: msg.stageRespCode || null,
+        reason: (msg.netsTxnMsg || "Payment declined.").replace(/\+/g, " "),
+      };
+    } else if (status === "0") {
+      // Approved — bank has authorised, no need to hit b2s
+      const amtDeducted = msg.netsAmountDeducted;
+      const amtFormatted =
+        amtDeducted > 0 ? `S$ ${(amtDeducted / 100).toFixed(2)}` : null;
+      preParsed = {
+        status: "success",
+        merchantTxnRef: msg.merchantTxnRef || null,
+        meterId: null,
+        amount: amtFormatted,
+        stageRespCode: msg.stageRespCode || null,
+        reason: "Payment completed.",
+      };
+    }
+  } catch {}
+  return { message, hmac, keyId, action, preParsed };
 }
 
 // ── Step 4c: POST to b2s → follow redirect to /pay_result ────────────────────
 
-async function postToB2s({ action, message, hmac, keyId }) {
+async function postToB2s({ action, message, hmac, keyId, jsessionId }) {
   const b2sUrl = action || "https://p-1.evs.com.sg/enets/b2s";
-  const body = new URLSearchParams({ message, hmac, KeyId: keyId }).toString();
+
+  const safeMessage = message.replace(/\+/g, "%2B");
+
+  const body =
+    `message=${safeMessage}` +
+    `&hmac=${encodeURIComponent(hmac)}` +
+    `&KeyId=${encodeURIComponent(keyId)}`;
+
+  console.log("[b2s] body length:", body.length);
+  console.log("[b2s] body (full):", body); // remove before production
 
   const resp = await axios.post(b2sUrl, body, {
     headers: {
       ...DEFAULT_HEADERS,
       "Content-Type": "application/x-www-form-urlencoded",
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+      "Upgrade-Insecure-Requests": "1",
       Origin: "https://www2.enets.sg",
       Referer: "https://www2.enets.sg/",
+      "Sec-Fetch-Site": "cross-site",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Dest": "document",
+      ...(jsessionId ? { Cookie: `JSESSIONID=${jsessionId}` } : {}),
     },
     validateStatus: () => true,
-    maxRedirects: 10,
+    maxRedirects: 0,
   });
 
-  const html = String(resp.data || "");
-  // axios stores the final URL after redirects here:
-  const finalUrl =
-    resp.request?.res?.responseUrl || resp.request?.responseURL || "";
-  const parsed = parsePayResult(finalUrl, html);
+  const locationHeader = resp.headers?.location || "";
+  const responseBody = String(resp.data || "");
 
-  return { status: resp.status, html, parsed, finalUrl };
+  console.log("[b2s] status:", resp.status);
+  console.log("[b2s] location:", locationHeader);
+  console.log("[b2s] body (first 800):", responseBody.slice(0, 800));
+
+  if (resp.status === 303 || (resp.status >= 301 && resp.status <= 308)) {
+    const finalUrl = locationHeader.startsWith("http")
+      ? locationHeader
+      : locationHeader
+        ? `https://enetspp-nus-live.evs.com.sg${locationHeader}`
+        : "";
+
+    const parsed = parsePayResult(finalUrl, "");
+    return { status: resp.status, html: "", parsed, finalUrl };
+  }
+  console.error("[b2s] unexpected status, not a redirect:", resp.status);
+
+  const scrapedReason =
+    responseBody
+      .match(/<[^>]*class=["'][^"']*error[^"']*["'][^>]*>\s*([^<]+)/i)?.[1]
+      ?.trim() ||
+    responseBody.match(/<p[^>]*>\s*([^<]{10,200})\s*<\/p>/i)?.[1]?.trim() ||
+    responseBody.match(/<title[^>]*>\s*([^<]+)\s*<\/title>/i)?.[1]?.trim() ||
+    `b2s returned HTTP ${resp.status} without redirect`;
+
+  return {
+    status: resp.status,
+    html: responseBody,
+    parsed: {
+      status: "failure",
+      merchantTxnRef: null,
+      meterId: null,
+      amount: null,
+      stageRespCode: null,
+      reason: scrapedReason,
+    },
+    finalUrl: "",
+  };
 }
 
 // ── Parse /pay_result?r=&t=&a=&x=&s=&m= (all base64) ─────────────────────────
@@ -1067,6 +1259,16 @@ router.get("/webapp", async (req, res) => {
   if (!txtMtrId || !txtAmount)
     return res.status(400).send(errorPage("Missing meter ID or amount."));
 
+  if (!isValidMeterId(txtMtrId))
+    return res
+      .status(400)
+      .send(errorPage("Meter ID must be exactly 8 digits."));
+
+  if (!isValidAmount(txtAmount))
+    return res
+      .status(400)
+      .send(errorPage("Amount must be between $6.00 and $50.00."));
+
   try {
     const meterSummary = await getMeterSummary(txtMtrId);
     res.setHeader("Content-Type", "text/html; charset=UTF-8");
@@ -1086,6 +1288,22 @@ router.get("/webapp/bootstrap", async (req, res) => {
     return res
       .status(400)
       .json({ ok: false, error: "Missing meter ID or amount." });
+  }
+
+  if (!isValidMeterId(txtMtrId)) {
+    return res.status(400).json({
+      ok: false,
+      code: "INVALID_METER_ID",
+      error: "Meter ID must be exactly 8 digits.",
+    });
+  }
+
+  if (!isValidAmount(txtAmount)) {
+    return res.status(400).json({
+      ok: false,
+      code: "INVALID_AMOUNT",
+      error: "Amount must be between $6.00 and $50.00.",
+    });
   }
 
   track("bootstrap_started", { meterId: txtMtrId, amount: txtAmount });
@@ -1158,13 +1376,15 @@ router.get("/webapp/pay", (req, res) => {
     n,
     e,
     netsMid,
-    paymtNetsMid = "",
     netsTxnRef,
     merchantTxnRef,
     txnRand = "",
     keyId = "",
     hmac = "",
   } = req.query;
+
+  console.log("[pay route] netsTxnRef:", netsTxnRef);
+  console.log("[pay route] netsMid:", netsMid);
 
   if (!txtMtrId || !txtAmount || !n || !e || !netsMid || !netsTxnRef) {
     return res
@@ -1177,7 +1397,7 @@ router.get("/webapp/pay", (req, res) => {
     cardPaymentPage({
       n,
       e,
-      netsMid: paymtNetsMid || netsMid,
+      netsMid,
       netsTxnRef,
       merchantTxnRef: merchantTxnRef || "",
       amount: txtAmount,
@@ -1242,11 +1462,14 @@ router.post(
         userAgent: browserUserAgent || DEFAULT_HEADERS["User-Agent"],
       };
 
+      const envJsessionId = await fetchEnvJsp();
+
       // Step 4a: establish credit session
       const { jsessionId } = await callCreditInit({
         txnRand: txnRand || "",
         keyId: reqKeyId || "",
         hmac: reqHmac || "",
+        jsessionId: envJsessionId, // ← seed with env.jsp session
       });
 
       // Step 4b: submit RSA-encrypted card data
@@ -1257,7 +1480,7 @@ router.post(
         netsMid,
         netsTxnRef: netsTxnRef || "",
         merchantTxnRef,
-        enc,
+        enc: (enc || "").replace(/[\r\n]/g, ""),
         name: name || "",
         expiryMonth: expiryMonth || "",
         expiryYear: expiryYear || "",
@@ -1266,12 +1489,29 @@ router.post(
         browserInfo,
       });
 
+      if (panResult.preParsed) {
+        const normalized = normalizeFinalOutcome(panResult.preParsed);
+        return res.status(200).json({
+          ok: true,
+          source: "pan_result",
+          status: normalized.status,
+          merchantTxnRef: normalized.merchantTxnRef || merchantTxnRef || "",
+          meterId: meterId || "",
+          address: address || "",
+          balance: balance || "",
+          amount: amount || "",
+          reason: normalized.reason,
+          stageRespCode: panResult.preParsed.stageRespCode || "",
+        });
+      }
+
       // Step 4c: POST auto-submit form to b2s, follow redirect to /pay_result
       const b2sResult = await postToB2s({
         action: panResult.action,
         message: panResult.message,
         hmac: panResult.hmac,
         keyId: panResult.keyId,
+        jsessionId,
       });
 
       const parsed = b2sResult.parsed || {};

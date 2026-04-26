@@ -150,6 +150,35 @@ async function getRecentUsageStat(meterDisplayName, lookBackHours = 168) {
   return resp.data?.usage_stat?.kwh_rank_in_building || null;
 }
 
+async function getMonthToDateUsage(meterDisplayName) {
+  const meterId = String(meterDisplayName || "").trim();
+  if (!meterId) return null;
+
+  const resp = await axios.post(
+    "https://ore.evs.com.sg/get_month_to_date_usage",
+    {
+      svcClaimDto: {
+        username: meterId,
+        user_id: null,
+        svcName: "oresvc",
+        endpoint: "/get_month_to_date_usage",
+        scope: "self",
+        target: "meter.month_to_date_kwh_usage",
+        operation: "read",
+      },
+      request: {
+        meter_displayname: meterId,
+        convert_to_money: "true",
+      },
+    },
+    { headers: ORE_HEADERS, validateStatus: () => true },
+  );
+
+  if (resp.status !== 200) return null;
+  const val = resp.data?.month_to_date_usage;
+  return typeof val === "number" ? val : null;
+}
+
 function analyzeUsage(history = [], creditBal = null) {
   const diffs = history
     .map((x) => Number(x?.reading_diff))
@@ -233,24 +262,36 @@ async function formatUsageSummary(
   const lines = [];
 
   if (a.lastDay != null) {
-    lines.push(`📈 *Yesterday:* ${a.lastDay.toFixed(2)}`);
+    lines.push(`📈 *Yesterday:* SGD ${a.lastDay.toFixed(2)}`);
   }
   if (a.avgDaily != null) {
-    lines.push(`📊 *${days}-day avg:* ${a.avgDaily.toFixed(2)} / day`);
+    lines.push(`📊 *${days}-day avg:* SGD ${a.avgDaily.toFixed(2)} / day`);
   }
   if (a.total != null) {
-    lines.push(`🧮 *${days}-day total:* ${a.total.toFixed(2)}`);
+    lines.push(`🧮 *${days}-day total:* SGD ${a.total.toFixed(2)}`);
   }
 
   if (meterId) {
     try {
-      const rank = await getRecentUsageStat(meterId);
+      const [rankResult, mtdResult] = await Promise.allSettled([
+        getRecentUsageStat(meterId),
+        getMonthToDateUsage(meterId),
+      ]);
+
+      const rank = rankResult.status === "fulfilled" ? rankResult.value : null;
+      const mtd = mtdResult.status === "fulfilled" ? mtdResult.value : null;
+
       if (rank) {
         const pct = (Number(rank.rank_val) * 100).toFixed(0);
         const buildingAvg = Number(rank.ref_val).toFixed(2);
         lines.push(
-          `🏆 *Building rank:* top ${100 - pct}% (avg in building: ${buildingAvg} kWh/7d)`,
+          `🏆 *Building rank:* top ${100 - pct}% (building avg: SGD ${buildingAvg}/day)`,
         );
+      }
+
+      if (mtd !== null) {
+        // negative = spent, so display as positive cost
+        lines.push(`🗓️ *This month so far:* SGD ${Math.abs(mtd).toFixed(2)}`);
       }
     } catch {
       // silently skip if rank fetch fails
@@ -270,4 +311,6 @@ module.exports = {
   getMeterUsage,
   analyzeUsage,
   formatUsageSummary,
+  getMonthToDateUsage,
+  getRecentUsageStat,
 };

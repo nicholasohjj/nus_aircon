@@ -15,11 +15,8 @@ const {
   captureException,
   shutdownAnalytics,
 } = require("./services/analytics");
-const {
-  isCp2Meter,
-  isValidAmount,
-  isValidMeterId,
-} = require("./services/vars");
+const { isCp2Meter } = require("./services/cp2Service");
+const { isValidAmount, isValidMeterId } = require("./services/validators");
 const bot = new Telegraf(TOKEN);
 
 function isHttpsUrl(url) {

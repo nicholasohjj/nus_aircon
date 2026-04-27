@@ -15,7 +15,6 @@ const {
   classifyLoginResponse,
   classifySelectOfferResponse,
   parseEvsTransactionSummary,
-  parseEnetsResult,
   normalizeFinalOutcome,
   isRedirectStatus,
   resolveUpstreamLocation,

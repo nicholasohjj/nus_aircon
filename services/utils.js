@@ -23,20 +23,21 @@ function htmlDecode(str) {
 }
 
 function extractHiddenField(html, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const m =
     String(html || "").match(
       new RegExp(
-        `<input[^>]*\\bname=['"]${name}['"][^>]*\\bvalue=['"]([^'"]*)['"\\s]`,
+        `<input[^>]*\\bname=["']${escaped}["'][^>]*\\bvalue=["']([^"']*)["']`,
         "i",
       ),
     ) ||
     String(html || "").match(
       new RegExp(
-        `<input[^>]*\\bvalue=['"]([^'"]*)['"\\s][^>]*\\bname=['"]${name}['"]`,
+        `<input[^>]*\\bvalue=["']([^"']*)["'][^>]*\\bname=["']${escaped}["']`,
         "i",
       ),
     );
-  return m?.[1] || null;
+  return m ? htmlDecode(m[1]) : null;
 }
 
 function extractMerchantTxnRef(html) {
@@ -226,7 +227,10 @@ function normalizeFinalOutcome(parsed = {}) {
   const isFailure =
     parsed.status === "failure" ||
     /rejected by financial institution/i.test(reason) ||
-    /failed to purchase/i.test(reason);
+    /failed to purchase/i.test(reason) ||
+    /system error/i.test(reason) ||
+    /call merchant/i.test(reason);
+
   return {
     ...parsed,
     status: isFailure ? "failure" : "success",

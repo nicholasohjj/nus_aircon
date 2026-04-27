@@ -77,7 +77,39 @@ function startTopUp(chatId) {
 }
 
 function getWebAppPath(hostel) {
-  return hostel === HOSTELS.CP2NUS ? "/cp2nus/webapp" : "/webapp/";
+  return hostel === HOSTELS.CP2NUS ? "/cp2nus/webapp" : "/webapp";
+}
+
+function helpText() {
+  return (
+    `ℹ️ *EVS Top-Up Help*\n\n` +
+    `*Supported hostels*\n` +
+    `• PGPR\n` +
+    `• Houses @ PGP\n` +
+    `• Residential Colleges\n` +
+    `• NUS College\n` +
+    `  → uses cp2.evs.com.sg\n` +
+    `• UTown Residence\n` +
+    `• RVRC\n` +
+    `  → uses cp2nus.evs.com.sg\n\n` +
+    `*Accepted amount*\n` +
+    `• Minimum: $6.00 SGD\n` +
+    `• Maximum: $50.00 SGD\n\n` +
+    `*Useful commands*\n` +
+    `• /topup — start a new top-up\n` +
+    `• /balance — check meter balance\n` +
+    `• /usage — show recent daily usage\n` +
+    `• /cancel — cancel the current flow\n` +
+    `• /help — show this message`
+  );
+}
+
+function escapeMarkdown(text) {
+  return String(text || "").replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
+}
+
+async function sendHelp(ctx) {
+  return ctx.replyWithMarkdown(helpText(), mainKeyboard());
 }
 
 async function setupTelegramUi() {
@@ -120,30 +152,7 @@ bot.hears("📊 Usage", async (ctx) => {
   );
 });
 
-bot.hears("ℹ️ Help", async (ctx) => {
-  return ctx.replyWithMarkdown(
-    `ℹ️ *EVS Top-Up Help*\n\n` +
-      `*Supported hostels*\n` +
-      `• PGPR\n` +
-      `• Houses @ PGP\n` +
-      `• Residential Colleges\n` +
-      `• NUS College\n` +
-      `  → uses cp2.evs.com.sg\n` +
-      `• UTown Residence\n` +
-      `• RVRC\n` +
-      `  → uses cp2nus.evs.com.sg\n\n` +
-      `*Accepted amount*\n` +
-      `• Minimum: $6.00 SGD\n` +
-      `• Maximum: $50.00 SGD\n\n` +
-      `*Useful commands*\n` +
-      `• /topup — start a new top-up\n` +
-      `• /balance — check meter balance\n` +
-      `• /usage — show recent daily usage\n` +
-      `• /cancel — cancel the current flow\n` +
-      `• /help — show this message`,
-    mainKeyboard(),
-  );
-});
+bot.hears("ℹ️ Help", sendHelp);
 
 bot.hears("⚡ Top Up", async (ctx) => {
   const chatId = ctx.chat?.id;
@@ -203,29 +212,7 @@ bot.command("topup", async (ctx) => {
   return ctx.reply("🏠 Please select your hostel:", hostelKeyboard());
 });
 
-bot.command("help", async (ctx) => {
-  return ctx.replyWithMarkdown(
-    `ℹ️ *EVS Top-Up Help*\n\n` +
-      `*Supported hostels*\n` +
-      `• PGPR\n` +
-      `• Houses @ PGP\n` +
-      `• Residential Colleges\n` +
-      `• NUS College\n` +
-      `  → uses cp2.evs.com.sg\n` +
-      `• UTown Residence\n` +
-      `• RVRC\n` +
-      `  → uses cp2nus.evs.com.sg\n\n` +
-      `*Accepted amount*\n` +
-      `• Minimum: $6.00 SGD\n` +
-      `• Maximum: $50.00 SGD\n\n` +
-      `*Useful commands*\n` +
-      `• /topup — start a new top-up\n` +
-      `• /usage — show recent daily usage\n` +
-      `• /cancel — cancel the current flow\n` +
-      `• /help — show this message`,
-    mainKeyboard(),
-  );
-});
+bot.command("help", sendHelp);
 
 bot.command("cancel", async (ctx) => {
   const chatId = ctx.chat?.id;
@@ -289,8 +276,9 @@ bot.on("text", async (ctx) => {
     }
 
     session.txtMtrId = text;
-    await ctx.reply("🔍 Fetching meter details and recent usage…");
-
+    if (session.inFlight) return ctx.reply("⏳ Please wait…");
+    session.inFlight = true;
+    await ctx.reply("🔍 Fetching meter details…");
     try {
       const [summary, usage] = await Promise.all([
         getMeterSummary(text),
@@ -302,7 +290,7 @@ bot.on("text", async (ctx) => {
       const lines = [`✅ Meter ID: \`${text}\``];
 
       if (summary.address) {
-        lines.push(`🏠 *Address:* ${summary.address}`);
+        lines.push(`🏠 *Address:* ${escapeMarkdown(summary.address)}`);
       }
 
       const bal = Number(summary.credit_bal);
@@ -345,6 +333,8 @@ bot.on("text", async (ctx) => {
           `Now enter the *amount in SGD* (e.g. \`20\` for $20.00, min $6, max $50):`,
         Markup.keyboard([["❌ Cancel"]]).resize(),
       );
+    } finally {
+      session.inFlight = false;
     }
   }
 
@@ -354,8 +344,9 @@ bot.on("text", async (ctx) => {
     }
 
     session.stage = "idle";
+    if (session.inFlight) return ctx.reply("⏳ Please wait…");
+    session.inFlight = true;
     await ctx.reply("🔍 Checking recent usage…");
-
     try {
       const [summary, usage] = await Promise.all([
         getMeterSummary(text),
@@ -388,6 +379,8 @@ bot.on("text", async (ctx) => {
         "⚠️ Failed to fetch usage history. Please try again.",
         mainKeyboard(),
       );
+    } finally {
+      session.inFlight = false;
     }
   }
 
@@ -411,136 +404,153 @@ bot.on("text", async (ctx) => {
       amount: amountDollars,
     });
 
-    if (session.hostel === HOSTELS.CP2) {
-      await ctx.reply("🔍 Verifying meter with EVS WebPOS before payment…");
+    if (session.inFlight) return ctx.reply("⏳ Please wait…");
+    session.inFlight = true;
+    try {
+      if (session.hostel === HOSTELS.CP2) {
+        await ctx.reply("🔍 Verifying meter with EVS WebPOS before payment…");
 
-      try {
-        const cp2Check = await isCp2Meter(session.txtMtrId);
+        try {
+          const cp2Check = await isCp2Meter(session.txtMtrId);
 
-        track("cp2_webpos_meter_check", {
-          chatId,
-          meterId: session.txtMtrId,
-          amount: amountDollars,
-          result: cp2Check.result,
-          status: cp2Check.status,
-        });
+          track("cp2_webpos_meter_check", {
+            chatId,
+            meterId: session.txtMtrId,
+            amount: amountDollars,
+            result: cp2Check.result,
+            status: cp2Check.status,
+          });
 
-        if (!cp2Check.ok) {
+          if (!cp2Check.ok) {
+            session.stage = "awaiting_meter_id";
+
+            return ctx.replyWithMarkdown(
+              `⚠️ I couldn't confirm this meter on the CP2 payment page.\n\n` +
+                `Meter ID: \`${session.txtMtrId}\`\n\n` +
+                `Please re-enter your 8-digit Meter ID:`,
+              Markup.keyboard([["❌ Cancel"]]).resize(),
+            );
+          }
+        } catch (err) {
+          track("cp2_webpos_meter_check_error", {
+            chatId,
+            meterId: session.txtMtrId,
+            amount: amountDollars,
+            error: err.message,
+          });
+
           session.stage = "awaiting_meter_id";
 
-          return ctx.replyWithMarkdown(
-            `⚠️ I couldn't confirm this meter on the CP2 payment page.\n\n` +
-              `Meter ID: \`${session.txtMtrId}\`\n\n` +
-              `Please re-enter your 8-digit Meter ID:`,
+          return ctx.reply(
+            "⚠️ I couldn't verify this meter with EVS right now. Please try entering the Meter ID again.",
             Markup.keyboard([["❌ Cancel"]]).resize(),
           );
         }
-      } catch (err) {
-        track("cp2_webpos_meter_check_error", {
-          chatId,
-          meterId: session.txtMtrId,
-          amount: amountDollars,
-          error: err.message,
-        });
-
-        session.stage = "awaiting_meter_id";
-
-        return ctx.reply(
-          "⚠️ I couldn't verify this meter with EVS right now. Please try entering the Meter ID again.",
-          Markup.keyboard([["❌ Cancel"]]).resize(),
-        );
       }
-    }
 
-    if (session.hostel === HOSTELS.CP2NUS) {
-      await ctx.reply("🔍 Checking that this meter is not a CP2 meter…");
+      if (session.hostel === HOSTELS.CP2NUS) {
+        await ctx.reply("🔍 Checking that this meter is not a CP2 meter…");
 
-      try {
-        const cp2Check = await isCp2Meter(session.txtMtrId);
+        try {
+          const cp2Check = await isCp2Meter(session.txtMtrId);
 
-        track("cp2nus_meter_check", {
-          chatId,
-          meterId: session.txtMtrId,
-          amount: amountDollars,
-          result: cp2Check.result,
-          status: cp2Check.status,
-        });
+          track("cp2nus_meter_check", {
+            chatId,
+            meterId: session.txtMtrId,
+            amount: amountDollars,
+            result: cp2Check.result,
+            status: cp2Check.status,
+          });
 
-        if (cp2Check.ok) {
+          if (cp2Check.ok) {
+            session.stage = "awaiting_meter_id";
+
+            return ctx.replyWithMarkdown(
+              `⚠️ This meter is associated with the CP2 payment page, not CP2NUS.\n\n` +
+                `Meter ID: \`${session.txtMtrId}\`\n\n` +
+                `Please re-enter your 8-digit Meter ID:`,
+              Markup.keyboard([["❌ Cancel"]]).resize(),
+            );
+          }
+        } catch (err) {
+          track("cp2_webpos_meter_check_error", {
+            chatId,
+            meterId: session.txtMtrId,
+            amount: amountDollars,
+            error: err.message,
+          });
+
           session.stage = "awaiting_meter_id";
 
-          return ctx.replyWithMarkdown(
-            `⚠️ This meter is associated with the CP2 payment page, not CP2NUS.\n\n` +
-              `Meter ID: \`${session.txtMtrId}\`\n\n` +
-              `Please re-enter your 8-digit Meter ID:`,
+          return ctx.reply(
+            "⚠️ I couldn't verify this meter with EVS right now. Please try entering the Meter ID again.",
             Markup.keyboard([["❌ Cancel"]]).resize(),
           );
         }
-      } catch (err) {
-        track("cp2_webpos_meter_check_error", {
+      }
+
+      session.stage = "idle";
+
+      const webAppPath = getWebAppPath(session.hostel);
+      const webAppUrl =
+        `${SERVER_URL}${webAppPath}?txtMtrId=${encodeURIComponent(session.txtMtrId)}` +
+        `&txtAmount=${encodeURIComponent(session.amountDollars)}`;
+      console.log("🌐 WebApp URL =", webAppUrl);
+      const hostelLabel =
+        session.hostel === HOSTELS.CP2NUS
+          ? "UTown Residence / RVRC (cp2nus)"
+          : "PGPR / Houses @ PGP / Residential Colleges / NUS College (cp2)";
+
+      if (!isHttpsUrl(SERVER_URL)) {
+        track("payment_button_shown", {
           chatId,
+          hostel: session.hostel,
           meterId: session.txtMtrId,
           amount: amountDollars,
-          error: err.message,
+          webAppUrl,
+          mode: "url_fallback",
         });
+        await ctx.replyWithMarkdown(
+          `📋 *Order Summary*\n\n` +
+            `🏠 Hostel: *${hostelLabel}*\n` +
+            `🔌 Meter ID: \`${session.txtMtrId}\`\n` +
+            `💵 Amount: $${amountDollars.toFixed(2)} SGD\n\n` +
+            `Your \`SERVER_URL\` is \`${SERVER_URL}\`.\n` +
+            `Telegram WebApp buttons require *HTTPS*, so I can’t open the WebApp inside Telegram with the current SERVER_URL.\n\n` +
+            `Open the payment page in your browser instead:`,
+          Markup.inlineKeyboard([
+            Markup.button.url("🌐 Open Payment Page", webAppUrl),
+          ]),
+        );
 
-        session.stage = "awaiting_meter_id";
-
-        return ctx.reply(
-          "⚠️ I couldn't verify this meter with EVS right now. Please try entering the Meter ID again.",
-          Markup.keyboard([["❌ Cancel"]]).resize(),
+        return ctx.replyWithMarkdown(
+          `For in-Telegram WebApp support, expose your server over HTTPS and set:\n\n` +
+            `\`SERVER_URL=https://<your-tunnel-host>\`\n\n` +
+            `then restart the bot.`,
         );
       }
-    }
 
-    session.stage = "idle";
-
-    const webAppPath = getWebAppPath(session.hostel);
-    const webAppUrl =
-      `${SERVER_URL}${webAppPath}?txtMtrId=${encodeURIComponent(session.txtMtrId)}` +
-      `&txtAmount=${encodeURIComponent(session.amountDollars)}`;
-    console.log("🌐 WebApp URL =", webAppUrl);
-    const hostelLabel =
-      session.hostel === HOSTELS.CP2NUS
-        ? "UTown Residence / RVRC (cp2nus)"
-        : "PGPR / Houses @ PGP / Residential Colleges / NUS College (cp2)";
-
-    if (!isHttpsUrl(SERVER_URL)) {
       track("payment_button_shown", {
         chatId,
         hostel: session.hostel,
         meterId: session.txtMtrId,
         amount: amountDollars,
         webAppUrl,
+        mode: "telegram_webapp",
       });
-      await ctx.replyWithMarkdown(
+
+      return ctx.replyWithMarkdown(
         `📋 *Order Summary*\n\n` +
           `🏠 Hostel: *${hostelLabel}*\n` +
           `🔌 Meter ID: \`${session.txtMtrId}\`\n` +
           `💵 Amount: $${amountDollars.toFixed(2)} SGD\n\n` +
-          `Your \`SERVER_URL\` is \`${SERVER_URL}\`.\n` +
-          `Telegram WebApp buttons require *HTTPS*, so I can’t open the WebApp inside Telegram with the current SERVER_URL.\n\n` +
-          `Open the payment page in your browser instead:`,
-        Markup.inlineKeyboard([
-          Markup.button.url("🌐 Open Payment Page", webAppUrl),
-        ]),
+          `Tap below to proceed to payment:`,
+        Markup.inlineKeyboard([Markup.button.webApp("💳 Pay Now", webAppUrl)]),
       );
-
-      return ctx.replyWithMarkdown(
-        `For in-Telegram WebApp support, expose your server over HTTPS and set:\n\n` +
-          `\`SERVER_URL=https://<your-tunnel-host>\`\n\n` +
-          `then restart the bot.`,
-      );
-    }
-
-    return ctx.replyWithMarkdown(
-      `📋 *Order Summary*\n\n` +
-        `🏠 Hostel: *${hostelLabel}*\n` +
-        `🔌 Meter ID: \`${session.txtMtrId}\`\n` +
-        `💵 Amount: $${amountDollars.toFixed(2)} SGD\n\n` +
-        `Tap below to proceed to payment:`,
-      Markup.inlineKeyboard([Markup.button.webApp("💳 Pay Now", webAppUrl)]),
-    );
+    } finally {
+      // ← try closes / finally
+      session.inFlight = false;
+    } // ← finally closes
   }
 
   if (session.stage === "awaiting_meter_id_balance") {
@@ -549,8 +559,9 @@ bot.on("text", async (ctx) => {
     }
 
     session.stage = "idle";
+    if (session.inFlight) return ctx.reply("⏳ Please wait…");
+    session.inFlight = true;
     await ctx.reply("🔍 Checking balance…");
-
     try {
       const summary = await getMeterSummary(text);
 
@@ -571,6 +582,8 @@ bot.on("text", async (ctx) => {
         "⚠️ Failed to fetch balance. Please try again.",
         mainKeyboard(),
       );
+    } finally {
+      session.inFlight = false;
     }
   }
 

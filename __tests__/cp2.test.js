@@ -1,9 +1,4 @@
-/**
- * Unit tests for cp2Utils.js pure functions.
- *
- * Run with:
- *   npx jest __tests__/cp2.test.js
- */
+import { describe, test, expect } from "vitest";
 
 const {
   escHtml,
@@ -19,10 +14,6 @@ const {
   isRedirectStatus,
   resolveUpstreamLocation,
 } = require("../services/utils");
-
-// ── Validation helpers ────────────────────────────────────────────────────────
-// If isValidMeterId / isValidAmount are exported from services/vars, replace with:
-// const { isValidMeterId, isValidAmount } = require("../services/vars");
 
 function isValidMeterId(id) {
   return /^\d{8}$/.test(String(id || ""));

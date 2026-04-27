@@ -1,16 +1,5 @@
 const axios = require("axios");
-
-const ORE_HEADERS = {
-  Accept: "application/json, text/plain, */*",
-  "Accept-Language": "en-US,en;q=0.9",
-  "Content-Type": "application/json; charset=UTF-8",
-  Origin: "https://cp2.evs.com.sg",
-  Referer: "https://cp2.evs.com.sg/",
-  "User-Agent":
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-  Authorization: "Bearer",
-};
-
+const { ORE_HEADERS } = require("./config");
 function toIsoRange(days = 7) {
   const end = new Date();
   const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);

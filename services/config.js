@@ -1,3 +1,14 @@
+const ORE_HEADERS = {
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Content-Type": "application/json; charset=UTF-8",
+  Origin: "https://cp2.evs.com.sg",
+  Referer: "https://cp2.evs.com.sg/",
+  "User-Agent":
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+  Authorization: "Bearer",
+};
+
 // Full browser headers for WebPOS page requests
 const WEBPOS_HEADERS = {
   Accept:
@@ -21,6 +32,7 @@ const EVS_API_BASE = "https://p-1.evs.com.sg";
 const ENETS_PP_HOST = "https://enetspp-nus-live.evs.com.sg";
 const NETS_API_HOST = "https://api.nets.com.sg";
 module.exports = {
+  ORE_HEADERS,
   WEBPOS_HEADERS,
   DEFAULT_HEADERS,
   CP2_WEBPOS_BASE,

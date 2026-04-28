@@ -3,6 +3,8 @@ const { Telegraf, Markup } = require("telegraf");
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
+const OWNER_CHAT_ID = process.env.OWNER_CHAT_ID; // get this from @userinfobot
+
 console.log("🚀 SERVER_URL =", SERVER_URL);
 if (!TOKEN) throw new Error("TELEGRAM_BOT_TOKEN env var is required");
 const {
@@ -68,6 +70,24 @@ function hostelKeyboard() {
   ]).resize();
 }
 
+function ratingKeyboard() {
+  return Markup.keyboard([
+    ["⭐ 1", "⭐⭐ 2", "⭐⭐⭐ 3", "⭐⭐⭐⭐ 4", "⭐⭐⭐⭐⭐ 5"],
+    ["❌ Cancel"],
+  ]).resize();
+}
+
+function parseStar(text) {
+  const map = {
+    "⭐ 1": 1,
+    "⭐⭐ 2": 2,
+    "⭐⭐⭐ 3": 3,
+    "⭐⭐⭐⭐ 4": 4,
+    "⭐⭐⭐⭐⭐ 5": 5,
+  };
+  return map[text] ?? null;
+}
+
 function startTopUp(chatId) {
   resetSession(chatId);
   const session = getSession(chatId);
@@ -98,6 +118,7 @@ function helpText() {
     `• /topup — start a new top-up\n` +
     `• /balance — check meter balance\n` +
     `• /usage — show recent daily usage\n` +
+    `• /feedback — share feedback or report an issue\n` +
     `• /cancel — cancel the current flow\n` +
     `• /help — show this message`
   );
@@ -116,6 +137,7 @@ async function setupTelegramUi() {
     { command: "topup", description: "Start electricity top-up" },
     { command: "balance", description: "Check meter balance" },
     { command: "usage", description: "Show recent daily usage" },
+    { command: "feedback", description: "Share feedback or report an issue" },
     { command: "help", description: "Show help and usage" },
     { command: "cancel", description: "Cancel current flow" },
   ]);
@@ -159,6 +181,22 @@ bot.hears("⚡ Top Up", async (ctx) => {
 
   startTopUp(chatId);
   return ctx.reply("🏠 Please select your hostel:", hostelKeyboard());
+});
+
+bot.hears("💬 Feedback", async (ctx) => {
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
+  track("feedback_button", { chatId });
+
+  resetSession(chatId);
+  const session = getSession(chatId);
+  session.stage = "awaiting_feedback_rating";
+
+  return ctx.reply(
+    "💬 *Share your feedback*\n\nHow would you rate your experience?",
+    { parse_mode: "Markdown", ...ratingKeyboard() },
+  );
 });
 
 bot.start(async (ctx) => {
@@ -211,6 +249,22 @@ bot.command("topup", async (ctx) => {
   return ctx.reply("🏠 Please select your hostel:", hostelKeyboard());
 });
 
+bot.command("feedback", async (ctx) => {
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
+  track("feedback_command", { chatId });
+
+  resetSession(chatId);
+  const session = getSession(chatId);
+  session.stage = "awaiting_feedback_rating";
+
+  return ctx.reply(
+    "💬 *Share your feedback*\n\nHow would you rate your experience?",
+    { parse_mode: "Markdown", ...ratingKeyboard() },
+  );
+});
+
 bot.command("help", sendHelp);
 
 bot.command("cancel", async (ctx) => {
@@ -239,6 +293,67 @@ bot.on("text", async (ctx) => {
   if (!text || text.startsWith("/")) return;
 
   const session = getSession(chatId);
+
+  if (session.stage === "awaiting_feedback_rating") {
+    const rating = parseStar(text);
+    if (rating === null) {
+      return ctx.reply(
+        "⚠️ Please tap one of the star buttons to rate your experience.",
+        ratingKeyboard(),
+      );
+    }
+
+    session.feedbackRating = rating;
+    session.stage = "awaiting_feedback_text";
+
+    const stars = "⭐".repeat(rating);
+    return ctx.reply(
+      `${stars} Got it!\n\nNow please type your feedback or any comments (or tap *Skip* to submit without a message):`,
+      {
+        parse_mode: "Markdown",
+        ...Markup.keyboard([["⏭ Skip"], ["❌ Cancel"]]).resize(),
+      },
+    );
+  }
+
+  if (session.stage === "awaiting_feedback_text") {
+    const feedbackText = text === "⏭ Skip" ? null : text;
+
+    track("feedback_submitted", {
+      chatId,
+      rating: session.feedbackRating,
+      message: feedbackText,
+    });
+
+    // Log to console so it's easy to grep in server logs even without a DB
+    console.log(
+      `📝 FEEDBACK from ${chatId}: rating=${session.feedbackRating}`,
+      feedbackText ? `| message="${feedbackText}"` : "(no message)",
+    );
+
+    resetSession(chatId);
+
+    const stars = "⭐".repeat(session.feedbackRating ?? 0);
+    const notifyLines = [
+      `📬 *New Feedback*`,
+      `👤 From: \`${chatId}\``,
+      `${stars} Rating: ${session.feedbackRating}/5`,
+    ];
+    if (feedbackText)
+      notifyLines.push(`💬 Message: _${escapeMarkdown(feedbackText)}_`);
+
+    await bot.telegram
+      .sendMessage(OWNER_CHAT_ID, notifyLines.join("\n"), {
+        parse_mode: "Markdown",
+      })
+      .catch((err) => console.error("Failed to notify owner:", err));
+    return ctx.replyWithMarkdown(
+      `✅ *Thanks for your feedback!*\n\n${stars}\n\n` +
+        (feedbackText ? `_"${escapeMarkdown(feedbackText)}"_\n\n` : "") +
+        `Your input helps us improve the bot.`,
+      mainKeyboard(),
+    );
+  }
 
   if (session.stage === "awaiting_hostel") {
     if (text === "🏠 PGPR / PGP / RC / NUSC (cp2)") {

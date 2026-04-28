@@ -6,9 +6,7 @@
   "scripts": {
     "start": "node app.js",
     "bot": "node bot.js",
-    "dev:cp2": "nodemon ./routes/cp2.js",
-    "dev:cp2nus": "nodemon ./routes/cp2nus.js",
-    "dev:bot": "nodemon bot.js",
+    "dev": "nodemon app.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier . --write",
@@ -33,7 +31,6 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.2.1",
     "globals": "^17.5.0",
-    "jest": "^30.3.0",
     "prettier": "^3.8.3",
     "vitest": "^4.1.5"
   }

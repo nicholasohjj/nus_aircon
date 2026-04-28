@@ -5,7 +5,7 @@ const { getMeterSummary } = require("../services/ore");
 const { track, captureException } = require("../services/analytics");
 const { isValidMeterId, isValidAmount } = require("../services/validators");
 const { normalizeFinalOutcome } = require("../services/utils");
-const { DEFAULT_HEADERS } = require("../services/config");
+const { DEFAULT_HEADERS, CP2NUS_BASE_PATH } = require("../services/config");
 const {
   errorPage,
   loadingPage,
@@ -21,10 +21,6 @@ const {
 } = require("../services/cp2nusService");
 router.use(express.urlencoded({ extended: false }));
 router.use(express.json());
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const BASE_PATH = "/cp2nus";
 
 router.get("/webapp", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
@@ -50,10 +46,12 @@ router.get("/webapp", async (req, res) => {
       ua: req.get("user-agent"),
     });
     res.setHeader("Content-Type", "text/html; charset=UTF-8");
-    return res.send(loadingPage(txtMtrId, txtAmount, meterSummary, BASE_PATH));
+    return res.send(
+      loadingPage(txtMtrId, txtAmount, meterSummary, CP2NUS_BASE_PATH),
+    );
   } catch {
     res.setHeader("Content-Type", "text/html; charset=UTF-8");
-    return res.send(loadingPage(txtMtrId, txtAmount, {}, BASE_PATH));
+    return res.send(loadingPage(txtMtrId, txtAmount, {}, CP2NUS_BASE_PATH));
   }
 });
 
@@ -119,12 +117,12 @@ router.get("/webapp/bootstrap", async (req, res) => {
 
     return res.status(200).json({
       ok: true,
-      redirectUrl: BASE_PATH + "/webapp/pay?" + params.toString(),
+      redirectUrl: CP2NUS_BASE_PATH + "/webapp/pay?" + params.toString(),
     });
   } catch (err) {
     captureException(err, String(txtMtrId || "anonymous"), {
       route: "cp2nus",
-      endpoint: BASE_PATH + "/webapp/bootstrap",
+      endpoint: CP2NUS_BASE_PATH + "/webapp/bootstrap",
     });
     track("bootstrap_failed", {
       meterId: txtMtrId,
@@ -182,7 +180,7 @@ router.get("/webapp/pay", (req, res) => {
       txnRand,
       keyId,
       hmac,
-      basePath: BASE_PATH,
+      basePath: CP2NUS_BASE_PATH,
     }),
   );
 });
@@ -358,7 +356,7 @@ router.get("/webapp/result", (req, res) => {
         address,
         balance,
       },
-      BASE_PATH,
+      CP2NUS_BASE_PATH,
     ),
   );
 });

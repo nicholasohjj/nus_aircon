@@ -29,8 +29,6 @@ const { DEFAULT_HEADERS, CP2_WEBPOS_BASE } = require("../services/config");
 router.use(express.urlencoded({ extended: false }));
 router.use(express.json());
 
-// const BASE_PATH = ""; // TO-DO: Replace with "/cp2"
-
 // ── Existing routes ───────────────────────────────────────────────────────────
 
 router.post("/purchase_flow", async (req, res) => {

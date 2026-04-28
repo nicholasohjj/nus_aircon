@@ -31,6 +31,10 @@ const CP2_WEBPOS_BASE = "https://nus-utown.evs.com.sg";
 const EVS_API_BASE = "https://p-1.evs.com.sg";
 const ENETS_PP_HOST = "https://enetspp-nus-live.evs.com.sg";
 const NETS_API_HOST = "https://api.nets.com.sg";
+
+const CP2NUS_BASE_PATH = "/cp2nus";
+const CP2_BASE_PATH = "/cp2";
+
 module.exports = {
   ORE_HEADERS,
   WEBPOS_HEADERS,
@@ -39,4 +43,6 @@ module.exports = {
   EVS_API_BASE,
   ENETS_PP_HOST,
   NETS_API_HOST,
+  CP2NUS_BASE_PATH,
+  CP2_BASE_PATH,
 };

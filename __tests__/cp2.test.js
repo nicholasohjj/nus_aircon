@@ -15,14 +15,7 @@ const {
   resolveUpstreamLocation,
 } = require("../services/utils");
 
-function isValidMeterId(id) {
-  return /^\d{8}$/.test(String(id || ""));
-}
-
-function isValidAmount(value) {
-  const n = Number(String(value || "").replace(/[^0-9.]/g, ""));
-  return Number.isFinite(n) && n >= 6 && n <= 50;
-}
+const { isValidMeterId, isValidAmount } = require("../services/validators");
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
 

@@ -1,7 +1,5 @@
 const { escHtml } = require("../services/utils");
-
-const BASE_PATH = "/cp2nus";
-
+const { CP2NUS_BASE_PATH } = require("../services/config");
 function errorPage(msg) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Error</title>
   <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;
@@ -13,7 +11,7 @@ function loadingPage(
   txtMtrId,
   txtAmount,
   meterInfo = {},
-  basePath = BASE_PATH,
+  basePath = CP2NUS_BASE_PATH,
 ) {
   const amtDisplay = Number(txtAmount).toFixed(2);
   const balanceDisplay =
@@ -65,7 +63,7 @@ function loadingPage(
   <div class="card">
     <div class="logo">⚡</div>
     <h1>Electricity Top-Up</h1>
-    <p class="subtitle">Connecting to payment gateway…</p>
+    <p class="subtitle">Connecting to EVS (cp2nus) payment gateway…</p>
   
     <div class="detail-row">
       <span class="detail-label">Meter ID</span>
@@ -90,8 +88,7 @@ function loadingPage(
   <script>
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
-  
-    const METER_ID   = ${JSON.stringify(txtMtrId)};
+    const METER_ID   = ${JSON.stringify(txtMtrId).replace(/</g, "\\u003c").replace(/>/g, "\\u003e")};
     const TXN_AMOUNT = ${JSON.stringify(txtAmount)};
     const BASE_PATH  = ${JSON.stringify(basePath)};
   
@@ -142,7 +139,7 @@ function cardPaymentPage({
   txnRand = "",
   keyId = "",
   hmac = "",
-  basePath = BASE_PATH,
+  basePath = CP2NUS_BASE_PATH,
 }) {
   const amtDisplay = Number(amount || 0).toFixed(2);
   return `<!DOCTYPE html>
@@ -425,7 +422,7 @@ function cardPaymentPage({
   </html>`;
 }
 
-function renderFinalResultPage(parsed, basePath = BASE_PATH) {
+function renderFinalResultPage(parsed, basePath = CP2NUS_BASE_PATH) {
   const ok = parsed.status === "success";
   const title = ok ? "Top-Up Successful" : "Top-Up Failed";
   const reason = parsed.reason || "Unable to determine transaction outcome.";

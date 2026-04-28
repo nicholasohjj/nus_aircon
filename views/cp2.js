@@ -621,6 +621,7 @@ function renderFinalResultPage(parsed) {
   const ok = parsed.status === "success";
   const title = ok ? "Top-Up Successful" : "Top-Up Failed";
   const reason = parsed.reason || "Unable to determine transaction outcome.";
+  const topUpUrl = `/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || "")}&txtAmount=${encodeURIComponent((parsed.amount || "").replace(/[^0-9.]/g, ""))}`;
 
   return `<!DOCTYPE html>
     <html lang="en">
@@ -796,7 +797,7 @@ function renderFinalResultPage(parsed) {
         <div class="status-note">${escHtml(reason)}</div>
     
         <div class="actions">
-          <button class="btn" onclick="window.location.href='/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || "")}&txtAmount=${encodeURIComponent((parsed.amount || "").replace(/[^0-9.]/g, ""))}'">
+<button class="btn" onclick="window.location.href='${escHtml(topUpUrl)}'">
             Top Up Again
           </button>
           <button class="btn secondary" onclick="closeMiniApp()">Close</button>

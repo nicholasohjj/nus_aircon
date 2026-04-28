@@ -5,7 +5,7 @@ const axios = require("axios");
 const cheerio = require("cheerio");
 const { getMeterSummary } = require("../services/ore");
 const { track, captureException } = require("../services/analytics");
-const { isValidAmount, isValidMeterId } = require("../services/validators");
+const { validationError } = require("../services/validators");
 const {
   extractHiddenField,
   extractMerchantTxnRef,
@@ -104,27 +104,14 @@ router.get("/webapp/result", (req, res) => {
 router.get("/webapp/bootstrap", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 
-  if (!txtMtrId || !txtAmount) {
-    return res.status(400).json({
-      ok: false,
-      stage: "init",
-      error: "Missing meter ID or amount.",
-    });
-  }
+  const inputError = validationError({ txtMtrId, txtAmount });
 
-  if (!isValidMeterId(txtMtrId)) {
+  if (inputError) {
     return res.status(400).json({
       ok: false,
       stage: "init",
-      error: "Meter ID must be exactly 8 digits.",
-    });
-  }
-
-  if (!isValidAmount(txtAmount)) {
-    return res.status(400).json({
-      ok: false,
-      stage: "init",
-      error: "Amount must be between $6.00 and $50.00.",
+      code: "INVALID_INPUT",
+      error: inputError,
     });
   }
 
@@ -137,13 +124,25 @@ router.get("/webapp/bootstrap", async (req, res) => {
     track("bootstrap_started", { meterId: txtMtrId, amount: txtAmount });
 
     if (!out?.ok) {
+      const error =
+        out.loginResult === "invalid"
+          ? "Meter ID not found. Please check that you selected the correct hostel and entered the 8-digit meter ID correctly."
+          : out.stage === "select_offer"
+            ? "Invalid amount. Please enter an amount between $6.00 and $50.00."
+            : out.error ||
+              "Failed to initialise payment flow. Please try again.";
+
       track("bootstrap_failed", {
         meterId: txtMtrId,
         amount: txtAmount,
         stage: out.stage,
-        error: out.error || null,
+        error,
       });
-      return res.status(502).json(out);
+
+      return res.status(502).json({
+        ...out,
+        error,
+      });
     }
 
     track("bootstrap_succeeded", {
@@ -488,20 +487,10 @@ router.get("/", (req, res) => {
 router.get("/webapp", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 
-  if (!txtMtrId || !txtAmount) {
-    return res.status(400).send(errorPage("Missing meter ID or amount."));
-  }
+  const inputError = validationError({ txtMtrId, txtAmount });
 
-  if (!isValidMeterId(txtMtrId)) {
-    return res
-      .status(400)
-      .send(errorPage("Meter ID must be exactly 8 digits."));
-  }
-
-  if (!isValidAmount(txtAmount)) {
-    return res
-      .status(400)
-      .send(errorPage("Amount must be between $6.00 and $50.00."));
+  if (inputError) {
+    return res.status(400).send(errorPage(inputError));
   }
 
   try {

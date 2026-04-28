@@ -15,7 +15,6 @@ const {
   captureException,
   shutdownAnalytics,
 } = require("./services/analytics");
-const { isCp2Meter } = require("./services/cp2Service");
 const { isValidAmount, isValidMeterId } = require("./services/validators");
 const bot = new Telegraf(TOKEN);
 
@@ -64,7 +63,7 @@ function mainKeyboard() {
 
 function hostelKeyboard() {
   return Markup.keyboard([
-    ["🏠 PGPR / PGP / RC / NUSC", "🏠 UTown Residence / RVRC"],
+    ["🏠 PGPR / PGP / RC / NUSC (cp2)", "🏠 UTown Residence / RVRC (cp2nus)"],
     ["❌ Cancel"],
   ]).resize();
 }
@@ -242,7 +241,7 @@ bot.on("text", async (ctx) => {
   const session = getSession(chatId);
 
   if (session.stage === "awaiting_hostel") {
-    if (text === "🏠 PGPR / PGP / RC / NUSC") {
+    if (text === "🏠 PGPR / PGP / RC / NUSC (cp2)") {
       session.hostel = HOSTELS.CP2;
       session.stage = "awaiting_meter_id";
       track("hostel_selected", { chatId, hostel: "cp2" });
@@ -252,7 +251,7 @@ bot.on("text", async (ctx) => {
       );
     }
 
-    if (text === "🏠 UTown Residence / RVRC") {
+    if (text === "🏠 UTown Residence / RVRC (cp2nus)") {
       session.hostel = HOSTELS.CP2NUS;
       session.stage = "awaiting_meter_id";
 
@@ -265,7 +264,7 @@ bot.on("text", async (ctx) => {
     }
 
     return ctx.reply(
-      "⚠️ Please choose either PGPR / PGP / RC / NUSC or UTown Residence / RVRC.",
+      "⚠️ Please choose either PGPR / PGP / RC / NUSC (cp2) or UTown Residence / RVRC (cp2nus).",
       hostelKeyboard(),
     );
   }
@@ -407,48 +406,6 @@ bot.on("text", async (ctx) => {
     if (session.inFlight) return ctx.reply("⏳ Please wait…");
     session.inFlight = true;
     try {
-
-      if (session.hostel === HOSTELS.CP2NUS) {
-        await ctx.reply("🔍 Checking that this meter is not a CP2 meter…");
-
-        try {
-          const cp2Check = await isCp2Meter(session.txtMtrId);
-
-          track("cp2nus_meter_check", {
-            chatId,
-            meterId: session.txtMtrId,
-            amount: amountDollars,
-            result: cp2Check.result,
-            status: cp2Check.status,
-          });
-
-          if (cp2Check.ok) {
-            session.stage = "awaiting_meter_id";
-
-            return ctx.replyWithMarkdown(
-              `⚠️ This meter is associated with the CP2 payment page, not CP2NUS.\n\n` +
-                `Meter ID: \`${session.txtMtrId}\`\n\n` +
-                `Please re-enter your 8-digit Meter ID:`,
-              Markup.keyboard([["❌ Cancel"]]).resize(),
-            );
-          }
-        } catch (err) {
-          track("cp2_webpos_meter_check_error", {
-            chatId,
-            meterId: session.txtMtrId,
-            amount: amountDollars,
-            error: err.message,
-          });
-
-          session.stage = "awaiting_meter_id";
-
-          return ctx.reply(
-            "⚠️ I couldn't verify this meter with EVS right now. Please try entering the Meter ID again.",
-            Markup.keyboard([["❌ Cancel"]]).resize(),
-          );
-        }
-      }
-
       session.stage = "idle";
 
       const webAppPath = getWebAppPath(session.hostel);

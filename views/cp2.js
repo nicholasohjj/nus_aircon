@@ -12,6 +12,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
     meterInfo.credit_bal !== undefined && meterInfo.credit_bal !== null
       ? Number(meterInfo.credit_bal).toFixed(2)
       : null;
+
   return `<!DOCTYPE html>
   <html lang="en">
   <head>
@@ -163,7 +164,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
   <body>
   <div class="card">
     <div class="logo">⚡</div>
-    <h1>Electricity Top-Up</h1>
+    <h1>Electricity Top-Up 123</h1>
     <p class="subtitle">Connecting to EVS (cp2) payment gateway…</p>
   
     <div class="detail-row">
@@ -216,6 +217,19 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
     const errorEl = document.getElementById('errorCard');
     const retryBtn = document.getElementById('retryBtn');
     const spinnerWrap = document.getElementById('spinnerWrap');
+
+    function showError(message) {
+  errorEl.textContent = "";
+  const strong = document.createElement("strong");
+  strong.textContent = "⚠️ Unable to continue";
+
+  const body = document.createElement("div");
+  body.textContent = message || "Something went wrong. Please try again.";
+
+  errorEl.appendChild(strong);
+  errorEl.appendChild(document.createElement("br"));
+  errorEl.appendChild(body);
+}
   
     const STAGE_LABELS = {
       init: 'Starting secure session…',
@@ -260,8 +274,8 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
         window.location.href = out.redirectUrl;
       } catch (err) {
         spinnerWrap.style.display = 'none';
-        errorEl.textContent = '⚠️ ' + (err.message || 'Unknown error');
-        errorEl.style.display = 'block';
+showError(err.message);
+          errorEl.style.display = 'block';
         retryBtn.style.display = 'block';
       }
     }

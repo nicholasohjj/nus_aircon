@@ -164,7 +164,7 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
   <body>
   <div class="card">
     <div class="logo">⚡</div>
-    <h1>Electricity Top-Up 123</h1>
+    <h1>Electricity Top-Up</h1>
     <p class="subtitle">Connecting to EVS (cp2) payment gateway…</p>
   
     <div class="detail-row">

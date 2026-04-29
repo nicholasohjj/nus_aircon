@@ -355,8 +355,8 @@ router.post(
         session.completedAt = Date.now();
 
         track("payment_result", {
-          meterId: req.body.meterId,
-          amount: req.body.amount,
+          meterId,
+          amount,
           merchantTxnRef: normalized.merchantTxnRef || "",
           status: normalized.status,
           reason: normalized.reason || "",
@@ -435,7 +435,7 @@ router.get("/webapp/pay", (req, res) => {
       );
 
   const { txtMtrId, txtAmount, address, balance, nets } = session;
-  const { n, e, netsMid, netsTxnRef, merchantTxnRef, actionUrl } = nets;
+  const { n, e, netsMid, netsTxnRef, merchantTxnRef } = nets;
 
   if (!txtMtrId || !txtAmount || !n || !e || !netsMid || !netsTxnRef) {
     return res
@@ -451,7 +451,6 @@ router.get("/webapp/pay", (req, res) => {
       netsMid,
       netsTxnRef,
       merchantTxnRef: merchantTxnRef || "",
-      actionUrl: actionUrl || "https://www.enets.sg/enets2/PaymentListener.do",
       amount: txtAmount,
       meterId: txtMtrId,
       address,

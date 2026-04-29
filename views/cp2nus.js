@@ -391,8 +391,8 @@ function cardPaymentPage({
   
         const out = await result.json().catch(() => ({}));
         if (!result.ok || !out.ok) throw new Error(out.error || 'Payment request failed');
-
-        window.location.href = '${escHtml(basePath)}/webapp/result?token=' + encodeURIComponent(${JSON.stringify(token)});
+        
+        window.location.href = '${escHtml(basePath)}/webapp/result?token=' + encodeURIComponent(token);
   
       } catch (err) {
         btn.disabled = false;

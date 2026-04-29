@@ -194,11 +194,6 @@ describe("cardPaymentPage (cp2)", () => {
     expect(html).toContain("/webapp/result");
   });
 
-  test("injects actionUrl as JS constant", () => {
-    const html = cardPaymentPage(BASE_CARD_ARGS);
-    expect(html).toContain("https://www.enets.sg/enets2/PaymentListener.do");
-  });
-
   test("loads RSA JS libraries from enets.sg", () => {
     const html = cardPaymentPage(BASE_CARD_ARGS);
     expect(html).toContain("https://www.enets.sg/GW2/js/rsa.js");
@@ -258,12 +253,6 @@ describe("cardPaymentPage (cp2)", () => {
     expect(html).toContain("&lt;script&gt;");
   });
 
-  test("uses default actionUrl when not provided", () => {
-    const { actionUrl: _, ...args } = BASE_CARD_ARGS;
-    const html = cardPaymentPage({ ...args, actionUrl: null });
-    expect(html).toContain("PaymentListener.do");
-  });
-
   test("handles empty address and balance", () => {
     const html = cardPaymentPage({
       ...BASE_CARD_ARGS,
@@ -299,7 +288,7 @@ describe("renderFinalResultPage (cp2)", () => {
 
   test("renders amount", () => {
     const html = renderFinalResultPage(SUCCESS_PARSED);
-    expect(html).toContain("S$ 20.00");
+    expect(html).toContain("SGD 20.00");
   });
 
   test("renders reason text", () => {

@@ -297,7 +297,6 @@ function cardPaymentPage({
   merchantTxnRef,
   amount,
   meterId,
-  actionUrl,
   address = "",
   balance = "",
   token = "",
@@ -423,7 +422,8 @@ function cardPaymentPage({
         <input type="hidden" name="enc" id="enc">
         <input type="hidden" name="netsMid" value="${escHtml(netsMid)}">
         <input type="hidden" name="netsTxnRef" value="${escHtml(netsTxnRef)}">
-    
+        <input type="hidden" name="token" value="${escHtml(token)}">
+
         <button type="submit" class="btn" id="submitBtn">
           <span id="btnLabel">Pay SGD ${escHtml(amtDisplay)}</span>
         </button>
@@ -438,7 +438,6 @@ function cardPaymentPage({
     
       const RSA_N = ${JSON.stringify(n)};
       const RSA_E = ${JSON.stringify(e)};
-      const ACTION_URL = ${JSON.stringify(actionUrl || "https://www.enets.sg/enets2/PaymentListener.do")};
       const MERCHANT_TXN_REF = ${JSON.stringify(merchantTxnRef)};
   
       // Replicate eNETS linebrk(str, maxLen)
@@ -549,7 +548,8 @@ function cardPaymentPage({
       }
   
       var enc = "RSA" + linebrk(res, 2048);
-  
+  const token = document.querySelector('input[name=token]').value;
+
   const payload = new URLSearchParams({
     browserJavaEnabled: 'false',
     browserJavaScriptEnabled: 'true',
@@ -580,7 +580,7 @@ function cardPaymentPage({
     "address": ${safeJson(address)},
     "balance": ${safeJson(balance)},
     "amount": ${safeJson("S$ " + amtDisplay)},
-      token: ${safeJson(token)},
+    token,
   });
   
   const result = await fetch('/webapp/enets_pay', {
@@ -595,7 +595,7 @@ function cardPaymentPage({
     throw new Error(out.error || 'Payment request failed');
   }
   
-window.location.href = '/webapp/result?token=' + encodeURIComponent(${safeJson(token)});
+window.location.href = '/webapp/result?token=' + encodeURIComponent(token);
     
         } catch (err) {
           btn.disabled = false;
@@ -797,10 +797,13 @@ function renderFinalResultPage(parsed) {
         </div>`
             : ""
         }
-        <div class="detail-row">
-          <span class="detail-label">Amount</span>
-          <span class="detail-value">${escHtml(parsed.amount || "-")}</span>
-        </div>
+        ${
+          parsed.amount !== undefined &&
+          parsed.amount !== null &&
+          parsed.amount !== ""
+            ? `<div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value">SGD ${escHtml(Number(String(parsed.amount).replace(/[^0-9.]/g, "")).toFixed(2))}</span></div>`
+            : `<div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value">-</span></div>`
+        }
     
         <div class="status-note">${escHtml(reason)}</div>
     

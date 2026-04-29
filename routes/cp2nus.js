@@ -197,6 +197,8 @@ router.post(
   "/webapp/enets_pay",
   express.urlencoded({ extended: false, limit: "10mb" }),
   async (req, res) => {
+    let session = null;
+
     try {
       const {
         enc,
@@ -218,10 +220,6 @@ router.post(
         browserUserAgent,
         keyId: reqKeyId,
         hmac: reqHmac,
-        meterId,
-        address,
-        balance,
-        amount,
       } = req.body;
 
       const { token } = req.body;
@@ -231,6 +229,13 @@ router.post(
           .status(400)
           .json({ ok: false, error: "Invalid or expired payment session." });
       }
+
+      const {
+        txtMtrId: meterId,
+        txtAmount: amount,
+        address,
+        balance,
+      } = session;
 
       if (!enc || !netsMid || !merchantTxnRef) {
         return res.status(400).json({
@@ -334,10 +339,15 @@ router.post(
         upstreamStatus: { b2s: b2sResult.status, finalUrl: b2sResult.finalUrl },
       });
     } catch (err) {
-      captureException(err, String(req.body?.meterId || "anonymous"), {
-        route: "cp2nus",
-        merchantTxnRef: req.body?.merchantTxnRef || "",
-      });
+      const meterId = session?.txtMtrId;
+      captureException(
+        err,
+        String(meterId || req.body?.meterId || "anonymous"),
+        {
+          route: "cp2nus",
+          merchantTxnRef: req.body?.merchantTxnRef || "",
+        },
+      );
       return res.status(500).json({ ok: false, error: err.message });
     }
   },

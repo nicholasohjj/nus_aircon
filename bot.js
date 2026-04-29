@@ -51,6 +51,18 @@ function getSession(chatId) {
   return sessions[chatId];
 }
 
+function hostelInlineKeyboard() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback("🏠 PGPR / PGP / RC / NUSC (cp2)", "hostel_cp2")],
+    [
+      Markup.button.callback(
+        "🏠 UTown Residence / RVRC (cp2nus)",
+        "hostel_cp2nus",
+      ),
+    ],
+  ]);
+}
+
 function resetSession(chatId) {
   sessions[chatId] = { stage: "idle", updatedAt: Date.now(), inFlight: false };
 }
@@ -60,13 +72,6 @@ function mainKeyboard() {
     ["⚡ Top Up"],
     ["💰 Balance", "📊 Usage"],
     ["ℹ️ Help"],
-  ]).resize();
-}
-
-function hostelKeyboard() {
-  return Markup.keyboard([
-    ["🏠 PGPR / PGP / RC / NUSC (cp2)", "🏠 UTown Residence / RVRC (cp2nus)"],
-    ["❌ Cancel"],
   ]).resize();
 }
 
@@ -182,7 +187,7 @@ bot.hears("⚡ Top Up", async (ctx) => {
   if (!chatId) return;
 
   startTopUp(chatId);
-  return ctx.reply("🏠 Please select your hostel:", hostelKeyboard());
+  return ctx.reply("🏠 Please select your hostel:", hostelInlineKeyboard());
 });
 
 // bot.hears("💬 Feedback", async (ctx) => {
@@ -205,6 +210,21 @@ bot.start(async (ctx) => {
   const chatId = ctx.chat?.id;
   track("bot_start", { chatId });
   if (chatId) resetSession(chatId);
+
+  const meterId = ctx.startPayload?.trim();
+
+  if (meterId && isValidMeterId(meterId)) {
+    track("bot_start_deeplink", { chatId, meterId });
+
+    const session = getSession(chatId);
+    session.stage = "awaiting_hostel";
+    session.txtMtrId = meterId;
+
+    return ctx.reply(
+      `⚡ EVS Electricity Top-Up\n\n🔌 Meter ID *${meterId}* detected.\n\nPlease select your hostel:`,
+      { parse_mode: "Markdown", ...hostelInlineKeyboard() }, // ← fix
+    );
+  }
 
   return ctx.reply(
     "⚡ EVS Electricity Top-Up\n\nChoose an option below:",
@@ -248,7 +268,7 @@ bot.command("topup", async (ctx) => {
   if (!chatId) return;
 
   startTopUp(chatId);
-  return ctx.reply("🏠 Please select your hostel:", hostelKeyboard());
+  return ctx.reply("🏠 Please select your hostel:", hostelInlineKeyboard()); // ← fix
 });
 
 bot.command("feedback", async (ctx) => {
@@ -284,6 +304,62 @@ bot.hears("❌ Cancel", async (ctx) => {
   return ctx.reply(
     "❌ Top-up cancelled. Use /topup to start again.",
     mainKeyboard(),
+  );
+});
+
+bot.action("hostel_cp2", async (ctx) => {
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
+  const session = getSession(chatId);
+  if (session.stage !== "awaiting_hostel") {
+    return ctx.answerCbQuery("⚠️ Please start a new top-up.");
+  }
+  await ctx.answerCbQuery();
+
+  session.hostel = HOSTELS.CP2;
+  track("hostel_selected", { chatId, hostel: "cp2" });
+
+  if (session.txtMtrId) {
+    session.stage = "awaiting_amount";
+    return ctx.replyWithMarkdown(
+      `🔌 Meter ID: \`${session.txtMtrId}\`\n\nEnter the *amount in SGD* (e.g. \`20\`, min $6, max $50):`,
+      Markup.keyboard([["❌ Cancel"]]).resize(),
+    );
+  }
+
+  session.stage = "awaiting_meter_id";
+  return ctx.reply(
+    "🔌 Please enter your 8-digit Meter ID:",
+    Markup.keyboard([["❌ Cancel"]]).resize(),
+  );
+});
+
+bot.action("hostel_cp2nus", async (ctx) => {
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
+  const session = getSession(chatId);
+  if (session.stage !== "awaiting_hostel") {
+    return ctx.answerCbQuery("⚠️ Please start a new top-up.");
+  }
+  await ctx.answerCbQuery();
+
+  session.hostel = HOSTELS.CP2NUS;
+  track("hostel_selected", { chatId, hostel: "cp2nus" });
+
+  if (session.txtMtrId) {
+    session.stage = "awaiting_amount";
+    return ctx.replyWithMarkdown(
+      `🔌 Meter ID: \`${session.txtMtrId}\`\n\nEnter the *amount in SGD* (e.g. \`20\`, min $6, max $50):`,
+      Markup.keyboard([["❌ Cancel"]]).resize(),
+    );
+  }
+
+  session.stage = "awaiting_meter_id";
+  return ctx.reply(
+    "🔌 Please enter your 8-digit Meter ID:",
+    Markup.keyboard([["❌ Cancel"]]).resize(),
   );
 });
 
@@ -360,35 +436,6 @@ bot.on("text", async (ctx) => {
     );
   }
 
-  if (session.stage === "awaiting_hostel") {
-    if (text === "🏠 PGPR / PGP / RC / NUSC (cp2)") {
-      session.hostel = HOSTELS.CP2;
-      session.stage = "awaiting_meter_id";
-      track("hostel_selected", { chatId, hostel: "cp2" });
-      return ctx.reply(
-        "🔌 Please enter your 8-digit Meter ID:",
-        Markup.keyboard([["❌ Cancel"]]).resize(),
-      );
-    }
-
-    if (text === "🏠 UTown Residence / RVRC (cp2nus)") {
-      session.hostel = HOSTELS.CP2NUS;
-      session.stage = "awaiting_meter_id";
-
-      track("hostel_selected", { chatId, hostel: "cp2nus" });
-
-      return ctx.reply(
-        "🔌 Please enter your 8-digit Meter ID:",
-        Markup.keyboard([["❌ Cancel"]]).resize(),
-      );
-    }
-
-    return ctx.reply(
-      "⚠️ Please choose either PGPR / PGP / RC / NUSC (cp2) or UTown Residence / RVRC (cp2nus).",
-      hostelKeyboard(),
-    );
-  }
-
   if (session.stage === "awaiting_meter_id") {
     if (!isValidMeterId(text)) {
       return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
@@ -397,8 +444,9 @@ bot.on("text", async (ctx) => {
     session.txtMtrId = text;
     if (session.inFlight) return ctx.reply("⏳ Please wait…");
     session.inFlight = true;
+    await ctx.sendChatAction("typing");
+    const loadingMsg = await ctx.reply("🔍 Fetching meter details…");
     try {
-      await ctx.reply("🔍 Fetching meter details…");
       const [summary, usage] = await Promise.all([
         getMeterSummary(text),
         getMeterUsage(text, 7),
@@ -434,9 +482,12 @@ bot.on("text", async (ctx) => {
         "Now enter the *amount in SGD* (e.g. `20` for $20.00, min $6, max $50):",
       );
 
-      return ctx.replyWithMarkdown(
+      await ctx.telegram.editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        undefined,
         lines.join("\n"),
-        Markup.keyboard([["❌ Cancel"]]).resize(),
+        { parse_mode: "Markdown" },
       );
     } catch (err) {
       track("prefill_usage_error", {
@@ -446,11 +497,12 @@ bot.on("text", async (ctx) => {
       });
 
       session.stage = "awaiting_amount";
-      return ctx.replyWithMarkdown(
-        `✅ Meter ID: \`${text}\`\n\n` +
-          `⚠️ I couldn't fetch recent usage right now.\n\n` +
-          `Now enter the *amount in SGD* (e.g. \`20\` for $20.00, min $6, max $50):`,
-        Markup.keyboard([["❌ Cancel"]]).resize(),
+      await ctx.telegram.editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        undefined,
+        `✅ Meter ID: \`${text}\`\n\n⚠️ Couldn't fetch usage.\n\nEnter amount (min $6, max $50):`,
+        { parse_mode: "Markdown" },
       );
     } finally {
       session.inFlight = false;
@@ -465,7 +517,8 @@ bot.on("text", async (ctx) => {
     session.stage = "idle";
     if (session.inFlight) return ctx.reply("⏳ Please wait…");
     session.inFlight = true;
-    await ctx.reply("🔍 Checking recent usage…");
+    await ctx.sendChatAction("typing");
+    const loadingMsg = await ctx.reply("🔍 Checking recent usage…");
     try {
       const [summary, usage] = await Promise.all([
         getMeterSummary(text),
@@ -491,13 +544,23 @@ bot.on("text", async (ctx) => {
         )) || "No usage data available.",
       );
 
-      return ctx.replyWithMarkdown(lines.join("\n"), mainKeyboard());
+      await ctx.telegram.editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        undefined,
+        lines.join("\n"),
+        { parse_mode: "Markdown" },
+      );
+      return ctx.reply("Choose an option:", mainKeyboard());
     } catch (err) {
       track("usage_error", { chatId, meterId: text, error: err.message });
-      return ctx.reply(
+      await ctx.telegram.editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        undefined,
         "⚠️ Failed to fetch usage history. Please try again.",
-        mainKeyboard(),
       );
+      return ctx.reply("Choose an option:", mainKeyboard());
     } finally {
       session.inFlight = false;
     }
@@ -598,7 +661,8 @@ bot.on("text", async (ctx) => {
     session.stage = "idle";
     if (session.inFlight) return ctx.reply("⏳ Please wait…");
     session.inFlight = true;
-    await ctx.reply("🔍 Checking balance…");
+    await ctx.sendChatAction("typing");
+    const loadingMsg = await ctx.reply("🔍 Checking balance…");
     try {
       const summary = await getMeterSummary(text);
 
@@ -612,13 +676,23 @@ bot.on("text", async (ctx) => {
         lines.push(`💰 *Balance:* unavailable`);
       }
 
-      return ctx.replyWithMarkdown(lines.join("\n"), mainKeyboard());
+      await ctx.telegram.editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        undefined,
+        lines.join("\n"),
+        { parse_mode: "Markdown" }, // no reply_markup here
+      );
+      return ctx.reply("Choose an option:", mainKeyboard());
     } catch (err) {
       track("balance_error", { chatId, error: err.message });
-      return ctx.reply(
+      await ctx.telegram.editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        undefined,
         "⚠️ Failed to fetch balance. Please try again.",
-        mainKeyboard(),
       );
+      return ctx.reply("Choose an option:", mainKeyboard());
     } finally {
       session.inFlight = false;
     }

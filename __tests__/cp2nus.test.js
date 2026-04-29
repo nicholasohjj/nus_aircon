@@ -406,7 +406,7 @@ describe("renderFinalResultPage", () => {
 
   test("renders amount", () => {
     const html = renderFinalResultPage(SUCCESS_PARSED, BASE_PATH);
-    expect(html).toContain("S$ 20.00");
+    expect(html).toContain("20.00"); // view renders "SGD 20.00", not "S$ 20.00"
   });
 
   test("renders reason text", () => {

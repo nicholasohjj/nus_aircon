@@ -25,6 +25,10 @@ const {
   postResultToEvs,
   extractEvsCallbackFromHtml,
 } = require("../services/cp2Service");
+const {
+  createPaymentSession,
+  getPaymentSession,
+} = require("../services/paymentSession");
 const { DEFAULT_HEADERS, CP2_WEBPOS_BASE } = require("../services/config");
 router.use(express.urlencoded({ extended: false }));
 router.use(express.json());
@@ -67,6 +71,55 @@ router.get("/purchase_flow/enets", async (req, res) => {
 });
 
 router.get("/webapp/result", (req, res) => {
+  const { token } = req.query;
+
+  // Token path (new)
+  if (token) {
+    const session = getPaymentSession(token);
+    if (!session)
+      return res
+        .status(400)
+        .send(
+          errorPage(
+            "Session expired. Check your meter balance to confirm payment.",
+          ),
+        );
+
+    const {
+      status,
+      merchantTxnRef,
+      txtMtrId,
+      txtAmount,
+      reason,
+      address,
+      balance,
+    } = session;
+
+    const eventName =
+      status === "success" ? "payment_completed" : "payment_failed";
+    track(eventName, {
+      meterId: txtMtrId,
+      amount: txtAmount,
+      status,
+      merchantTxnRef,
+      reason: reason || null,
+    });
+
+    res.setHeader("Content-Type", "text/html; charset=UTF-8");
+
+    return res.send(
+      renderFinalResultPage({
+        status,
+        merchantTxnRef,
+        meterId: txtMtrId,
+        amount: txtAmount,
+        reason,
+        address,
+        balance,
+      }),
+    );
+  }
+
   const {
     status = "unknown",
     ref = "",
@@ -77,17 +130,6 @@ router.get("/webapp/result", (req, res) => {
     balance = "",
   } = req.query;
 
-  const eventName =
-    status === "success" ? "payment_completed" : "payment_failed";
-  track(eventName, {
-    meterId,
-    amount,
-    status,
-    merchantTxnRef: ref,
-    reason: reason || null,
-  });
-
-  res.setHeader("Content-Type", "text/html; charset=UTF-8");
   return res.send(
     renderFinalResultPage({
       status,
@@ -171,25 +213,25 @@ router.get("/webapp/bootstrap", async (req, res) => {
         .json({ ok: false, error: "Missing eNETS key fields." });
     }
 
-    const params = new URLSearchParams({
+    const token = createPaymentSession({
       txtMtrId,
       txtAmount,
       address: meterSummary.address || "",
-      balance: meterSummary.credit_bal ?? "",
-      n,
-      e,
-      netsMid,
-      netsTxnRef,
-      merchantTxnRef: merchantTxnRef || "",
-      actionUrl,
+      balance: String(meterSummary.credit_bal ?? ""),
+      nets: { n, e, netsMid, netsTxnRef, merchantTxnRef, actionUrl },
+      status: "pending",
     });
 
     return res.status(200).json({
       ok: true,
       stage: out.stage,
-      redirectUrl: "/webapp/pay?" + params.toString(),
+      redirectUrl: `/webapp/pay?token=${token}`,
     });
   } catch (err) {
+    captureException(err, String(txtMtrId || "anonymous"), {
+      route: "cp2",
+      endpoint: "/webapp/bootstrap",
+    });
     return res.status(500).json({
       ok: false,
       stage: "init",
@@ -249,11 +291,25 @@ router.post(
   express.urlencoded({ extended: false, limit: "10mb" }),
   async (req, res) => {
     try {
+      const { token } = req.body;
+      const session = getPaymentSession(token);
+      if (!session) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Invalid or expired payment session." });
+      }
+
+      const {
+        txtMtrId: meterId,
+        txtAmount: amount,
+        address,
+        balance,
+      } = session; // ← add this here
       const body = new URLSearchParams(req.body).toString();
 
       track("payment_attempted", {
-        meterId: req.body.meterId,
-        amount: req.body.amount,
+        meterId,
+        amount,
         merchantTxnRef: req.body.merchantTxnRef,
       });
       const enetsResp = await axios.post(
@@ -292,6 +348,12 @@ router.post(
         const parsed = evsResult.parsed || {};
         const normalized = normalizeFinalOutcome(parsed);
 
+        session.status = normalized.status;
+        session.merchantTxnRef =
+          normalized.merchantTxnRef || req.body.merchantTxnRef || "";
+        session.reason = normalized.reason || "";
+        session.completedAt = Date.now();
+
         track("payment_result", {
           meterId: req.body.meterId,
           amount: req.body.amount,
@@ -309,10 +371,10 @@ router.post(
             evsCb.id ||
             req.body.merchantTxnRef ||
             "",
-          meterId: req.body.meterId || normalized.meterId || "",
-          address: req.body.address || "",
-          balance: req.body.balance || "",
-          amount: req.body.amount || normalized.amount || "",
+          meterId: meterId || normalized.meterId || "",
+          address: address || "",
+          balance: balance || "",
+          amount: amount || normalized.amount || "",
           reason: normalized.reason || "",
           upstreamStatus: {
             enets: enetsResp.status,
@@ -332,21 +394,24 @@ router.post(
         });
       }
 
-      const ok = receipt.status === "success";
+      const normalized = normalizeFinalOutcome(receipt); // add this
+
+      session.status = normalized.status;
+      session.merchantTxnRef =
+        receipt.merchantTxnRef || req.body.merchantTxnRef || "";
+      session.reason = normalized.reason || "";
+      session.completedAt = Date.now();
 
       return res.status(200).json({
         ok: true,
         source: "enets_receipt_fallback",
-        status: receipt.status,
-        merchantTxnRef:
-          receipt.merchantTxnRef ||
-          req.body.merchantTxnRef ||
-          req.body.merchant_txn_ref ||
-          "",
-        amount: receipt.deductedAmount || "",
-        reason: ok
-          ? "Payment completed."
-          : receipt.error || "Transaction failed.",
+        status: normalized.status,
+        merchantTxnRef: session.merchantTxnRef,
+        meterId,
+        address, // from session
+        balance, // from session
+        amount,
+        reason: normalized.reason || "",
       });
     } catch (err) {
       return res.status(500).json({
@@ -358,18 +423,19 @@ router.post(
 );
 
 router.get("/webapp/pay", (req, res) => {
-  const {
-    txtMtrId,
-    txtAmount,
-    address = "",
-    balance = "",
-    n,
-    e,
-    netsMid,
-    netsTxnRef,
-    merchantTxnRef,
-    actionUrl,
-  } = req.query;
+  const { token } = req.query;
+  if (!token) return res.status(400).send(errorPage("Missing payment token."));
+
+  const session = getPaymentSession(token);
+  if (!session)
+    return res
+      .status(400)
+      .send(
+        errorPage("Payment session expired or invalid. Please start again."),
+      );
+
+  const { txtMtrId, txtAmount, address, balance, nets } = session;
+  const { n, e, netsMid, netsTxnRef, merchantTxnRef, actionUrl } = nets;
 
   if (!txtMtrId || !txtAmount || !n || !e || !netsMid || !netsTxnRef) {
     return res
@@ -390,6 +456,7 @@ router.get("/webapp/pay", (req, res) => {
       meterId: txtMtrId,
       address,
       balance,
+      token,
     }),
   );
 });
@@ -516,9 +583,8 @@ router.post(
   express.urlencoded({ extended: false }),
   async (req, res) => {
     try {
-      const { status = "0", id } = req.query;
+      const { status = "0", id, token } = req.query;
       const { message } = req.body || {};
-
       if (!message || !id) {
         return res
           .status(400)
@@ -544,8 +610,16 @@ router.post(
       );
 
       const parsed = parseEvsTransactionSummary(evsResp.data);
+      const session = token ? getPaymentSession(token) : null;
 
-      res.setHeader("Content-Type", "text/html; charset=UTF-8");
+      if (session) {
+        session.status = parsed.status || "unknown";
+        session.merchantTxnRef = parsed.merchantTxnRef || "";
+        session.reason = parsed.reason || "";
+        session.completedAt = Date.now();
+        return res.redirect(`/webapp/result?token=${token}`);
+      }
+
       const q = new URLSearchParams({
         status: parsed.status || "unknown",
         ref: parsed.merchantTxnRef || "",

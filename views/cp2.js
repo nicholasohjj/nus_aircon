@@ -300,6 +300,7 @@ function cardPaymentPage({
   actionUrl,
   address = "",
   balance = "",
+  token = "",
 }) {
   const amtDisplay = Number(amount || 0).toFixed(2);
   return `<!DOCTYPE html>
@@ -579,6 +580,7 @@ function cardPaymentPage({
     "address": ${safeJson(address)},
     "balance": ${safeJson(balance)},
     "amount": ${safeJson("S$ " + amtDisplay)},
+      token: ${safeJson(token)},
   });
   
   const result = await fetch('/webapp/enets_pay', {
@@ -593,18 +595,7 @@ function cardPaymentPage({
     throw new Error(out.error || 'Payment request failed');
   }
   
-  // Redirect to your result page
-  const q = new URLSearchParams({
-    status: out.status || 'unknown',
-    ref: out.merchantTxnRef || MERCHANT_TXN_REF || '',
-    meterId: out.meterId || ${JSON.stringify(meterId)},
-    amount: out.amount || ${JSON.stringify("SGD " + amtDisplay)},
-    reason: out.reason || '',
-    address: out.address || ${JSON.stringify(address)},
-    balance: ${JSON.stringify(balance)},
-  }).toString();
-  
-  window.location.href = '/webapp/result?' + q;
+window.location.href = '/webapp/result?token=' + encodeURIComponent(${safeJson(token)});
     
         } catch (err) {
           btn.disabled = false;

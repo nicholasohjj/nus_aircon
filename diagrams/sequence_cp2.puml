@@ -5,7 +5,7 @@ actor User
 participant "Telegram Bot\n(bot.js)" as Bot
 participant "WebApp UI\n/webapp" as WebApp
 participant "Express Backend\n(server.js)" as Backend
-participant "EVS POS\nnus-utown.evs.com.sg" as EVS
+participant "EVS POS\nevs.com.sg" as EVS
 participant "Credit Payment JSP\n120.50.44.233" as CreditJSP
 participant "eNETS PaymentListener\nwww.enets.sg" as ENETSListener
 participant "eNETS Card Payment\n/GW2/uCredit/pay" as ENETSPay
@@ -17,78 +17,82 @@ Bot -> User: Ask hostel selection
 User -> Bot: Select hostel
 Bot -> User: Ask 8-digit Meter ID
 User -> Bot: Submit meter ID
-Bot -> User: Ask amount ($6-$50)
+Bot -> User: Ask amount ($6–$50)
 User -> Bot: Submit amount
-
-alt SERVER_URL is HTTPS
-    Bot -> User: Show WebApp button
-    User -> WebApp: Open Pay Now
-else SERVER_URL is not HTTPS
-    Bot -> User: Show browser URL fallback
-    User -> WebApp: Open payment page in browser
-end
+Bot -> User: Show WebApp button
+User -> WebApp: Open Pay Now
 
 == WebApp loading ==
 WebApp -> Backend: GET /webapp?txtMtrId&txtAmount
-Backend -> ORE: get_meter_info
-Backend -> ORE: get_credit_bal
-ORE --> Backend: address + balance
+Backend -> ORE: getMeterSummary(meterId)
+note right: single call returns\naddress + credit_bal
+ORE --> Backend: { address, credit_bal }
 Backend --> WebApp: Loading page with meter summary
 
+== Purchase bootstrap ==
 WebApp -> Backend: GET /webapp/bootstrap?txtMtrId&txtAmount
 
-== Purchase bootstrap ==
-Backend -> EVS: GET /EVSWebPOS/
-EVS --> Backend: Main page
+note over Backend: Promise.all(\n  runPurchaseFlow(...),\n  getMeterSummary(...)\n)
 
-Backend -> EVS: POST /EVSWebPOS/loginServlet\n(txtMtrId, btnLogin, radRetail)
-EVS --> Backend: Package selection page
+par runPurchaseFlow
+  Backend -> EVS: GET /EVSWebPOS/
+  EVS --> Backend: Main page
 
-Backend -> EVS: POST /EVSWebPOS/selectOfferServlet\n(txtAmount, hidMinPur, hidMaxPur, ...)
-EVS --> Backend: Payment selection page
+  Backend -> EVS: POST /EVSWebPOS/loginServlet\n(txtMtrId, btnLogin, radRetail)
+  EVS --> Backend: Package selection page
 
-Backend -> EVS: GET /EVSWebPOS/paymentServlet?mode=0&isDedicated=1
-EVS --> Backend: HTML with merchant_txn_ref
+  Backend -> EVS: POST /EVSWebPOS/selectOfferServlet\n(txtAmount, hidMinPur, hidMaxPur, ...)
+  EVS --> Backend: Payment selection page
 
-Backend -> CreditJSP: POST /payment/creditpayment.jsp\n(amt, txn_amount, currency_code,\nmerchant_txn_ref, payment_mode=CC)
-CreditJSP --> Backend: HTML with hidden message
+  Backend -> EVS: GET /EVSWebPOS/paymentServlet?mode=0&isDedicated=1\n[follows redirects via getFollowRedirects()]
+  EVS --> Backend: HTML with merchant_txn_ref
 
-Backend -> ENETSListener: POST /enets2/PaymentListener.do\n(message)
-ENETSListener --> Backend: eNETS payment page\n(n, e, netsMid, netsTxnRef)
+  Backend -> CreditJSP: POST /payment/creditpayment.jsp\n(amt, txn_amount, currency_code,\nmerchant_txn_ref, payment_mode=CC)
+  CreditJSP --> Backend: HTML with hidden eNETS message
 
-Backend --> WebApp: JSON redirectUrl=/webapp/pay?...params...
+  Backend -> ENETSListener: POST /enets2/PaymentListener.do\n(message)
+  ENETSListener --> Backend: eNETS payment page\n(n, e, netsMid, netsTxnRef)
+
+else getMeterSummary (parallel)
+  Backend -> ORE: getMeterSummary(meterId)
+  ORE --> Backend: { address, credit_bal }
+end
+
+Backend --> WebApp: JSON { ok, redirectUrl: "/webapp/pay?...params..." }
 
 == Card entry ==
-WebApp -> Backend: GET /webapp/pay?...params...
-Backend --> WebApp: Custom card payment page
+note over WebApp: Client-side redirect\nwindow.location.href = redirectUrl
+WebApp -> Backend: GET /webapp/pay?n&e&netsMid&netsTxnRef\n&merchantTxnRef&txtMtrId&txtAmount\n&address&balance&actionUrl
+Backend --> WebApp: Custom card payment page\n(loads eNETS RSA scripts from enets.sg)
 
-User -> WebApp: Enter cardholder name, email,\ncard number, exp month/year, CVV
-WebApp -> WebApp: RSA encrypt cardNo + cvv\nusing n/e from eNETS page
+User -> WebApp: Enter name, email, card no., exp MM/YY, CVV
+note over WebApp: RSA encrypt (cardNo + cvv)\nusing n/e from eNETS\nvia jsbn/rsa.js from enets.sg
 
-WebApp -> Backend: POST /webapp/enets_pay\n(enc, netsMid, netsTxnRef,\nmerchantTxnRef, meterId, amount, ...)
-Backend -> ENETSPay: POST /GW2/uCredit/pay
+WebApp -> Backend: POST /webapp/enets_pay\n(enc, netsMid, netsTxnRef, merchantTxnRef,\nmeterId, amount, address, balance, ...)
+Backend -> ENETSPay: POST https://www.enets.sg/GW2/uCredit/pay
 ENETSPay --> Backend: HTML response
 
-== Preferred result path ==
+== Result path ==
 alt EVS callback form found in eNETS HTML
-    Backend -> Backend: extract transSumServlet action,\nstatus, id, message
+    note over Backend: extractEvsCallbackFromHtml()\nextracts action, status, id, message
     Backend -> EVS: POST /EVSWebPOS/transSumServlet?status=...&id=...\n(message)
     EVS --> Backend: Final EVS transaction summary HTML
-    Backend -> Backend: parseEvsTransactionSummary()
-    Backend --> WebApp: JSON { ok, status, reason,\nmeterId, amount, address, balance }
+    note over Backend: parseEvsTransactionSummary()\nnormalizeFinalOutcome()
+    Backend --> WebApp: JSON { ok, status, reason,\nmerchantTxnRef, meterId, amount,\naddress, balance }
 else fallback receipt parser
-    Backend -> Backend: parseEnetsResult()
-    Backend --> WebApp: JSON fallback result
+    note over Backend: parseEnetsResult()
+    Backend --> WebApp: JSON { ok, status, merchantTxnRef,\namount, reason }
 end
 
 == Final UI ==
-WebApp -> Backend: GET /webapp/result?...query...
-Backend --> WebApp: Render final result page
+note over WebApp: Client-side redirect\nwindow.location.href = "/webapp/result?" + query
+WebApp -> Backend: GET /webapp/result?status&ref&meterId\n&amount&reason&address&balance
+Backend --> WebApp: renderFinalResultPage()
 
 alt success
-    WebApp --> User: Top-Up Successful
+    WebApp --> User: Top-Up Successful ✅
 else failure
-    WebApp --> User: Top-Up Failed
+    WebApp --> User: Top-Up Failed ⚠️
 end
 
 @enduml

@@ -1,4 +1,7 @@
 const { escHtml } = require("../services/utils");
+function safeJson(val) {
+  return JSON.stringify(val).replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
+}
 
 function errorPage(msg) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Error</title>
@@ -210,8 +213,8 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
   
-    const METER_ID = ${JSON.stringify(txtMtrId)};
-    const TXN_AMOUNT = ${JSON.stringify(txtAmount)};
+const METER_ID = ${safeJson(txtMtrId)};
+const TXN_AMOUNT = ${safeJson(txtAmount)};
   
     const statusEl = document.getElementById('statusText');
     const errorEl = document.getElementById('errorCard');
@@ -558,13 +561,13 @@ function cardPaymentPage({
     enc: enc,
     pageId: 'payment_page',
     button: 'submit',
-    e: ${JSON.stringify(e)},
-    n: ${JSON.stringify(n)},
-    netsMid: ${JSON.stringify(netsMid)},
-    netsTxnRef: ${JSON.stringify(netsTxnRef)},
+    e: ${safeJson(e)},
+    n: ${safeJson(n)},
+    netsMid: ${safeJson(netsMid)},
+    netsTxnRef: ${safeJson(netsTxnRef)},
     merchantTxnRef: MERCHANT_TXN_REF,
     currencyCode: 'SGD',
-    txnAmount: String(Math.round(${JSON.stringify(Number(amount))} * 100)),
+    txnAmount: String(Math.round(${safeJson(Number(amount))} * 100)),
     name: fields.name,
     cardNo: '****************',
     cvv: '***',
@@ -572,10 +575,10 @@ function cardPaymentPage({
     expiryYear: '20' + fields.yr,
     consumerEmail: fields.email,
     agree: 'Y',
-    meterId: ${JSON.stringify(meterId)},
-    address: ${JSON.stringify(address)},
-    balance: ${JSON.stringify(balance)},
-    amount: ${JSON.stringify("S$ " + amtDisplay)},
+    "meterId": ${safeJson(meterId)},
+    "address": ${safeJson(address)},
+    "balance": ${safeJson(balance)},
+    "amount": ${safeJson("S$ " + amtDisplay)},
   });
   
   const result = await fetch('/webapp/enets_pay', {

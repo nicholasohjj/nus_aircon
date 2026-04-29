@@ -603,4 +603,5 @@ module.exports = {
   callCreditInit,
   submitPanForm,
   postToB2s,
+  parsePayResult,
 };

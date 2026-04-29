@@ -1,0 +1,104 @@
+@startuml
+title EVS cp2nus Electricity Top-Up Flow
+
+actor User
+participant "Telegram Bot\n(bot.js)" as Bot
+participant "WebApp UI\n/webapp" as WebApp
+participant "Express Backend\n(cp2nus router)" as Backend
+participant "EVS API\np-1.evs.com.sg" as EVS
+participant "eNETS Payment Page\nenetspp-nus-live.evs.com.sg" as ENETSpp
+participant "NETS API\nwww2.enets.sg" as NETS
+participant "ORE API\nore.evs.com.sg" as ORE
+
+== Telegram bot flow ==
+User -> Bot: /topup
+Bot -> User: Ask hostel, meter ID, amount
+User -> Bot: Submit selections
+Bot -> User: Show WebApp button
+User -> WebApp: Open Pay Now
+
+== WebApp loading ==
+WebApp -> Backend: GET /webapp?txtMtrId&txtAmount
+Backend -> ORE: getMeterSummary(meterId)
+ORE --> Backend: { address, credit_bal }
+Backend --> WebApp: Loading page with meter summary
+
+== Purchase bootstrap ==
+WebApp -> Backend: GET /webapp/bootstrap?txtMtrId&txtAmount
+
+note over Backend: runBootstrap()
+
+note over Backend #LightYellow: step: meter_system_check
+Backend -> EVS: POST /EVSWebPOS/loginServlet (cp2 guard check)
+note right: isCp2Meter() — if meter belongs\nto cp2 system, return WRONG_SYSTEM error
+EVS --> Backend: valid/invalid
+
+note over Backend #LightYellow: step: init_pay
+Backend -> EVS: POST /enets/init_pay\n{ username: meterId, amount, user_id: "5771" }
+EVS --> Backend: { txn_identifier, req, sign }
+
+note over Backend #LightYellow: step: meter_info
+Backend -> ORE: getMeterSummary(meterId)
+ORE --> Backend: meter_info → buildPayDisplayAddress()\n(block, level, unit, building, tail)
+
+note over Backend #LightYellow: step: enetspp_pay — fetchNetsFields()
+note over Backend: buildEnetsPayUrl()\nbase64-encode m/a/d/t/s into /pay?p=
+Backend -> ENETSpp: GET /pay?p=<base64(m,a,d,t,s)>
+ENETSpp --> Backend: HTML with txnReq (JSON), keyId, hmac
+
+note over Backend #LightYellow: step: callTxnReqListener()
+Backend -> NETS: POST /GW2/TxnReqListener\n(txnReq JSON)\nHeaders: Hmac, Keyid
+NETS --> Backend: msg: { rsaModulus, rsaExponent,\nnetsTxnRef, netsMid (UMID_xxx),\npaymtNetsMid (acquiring MID),\nmerchantTxnRef, txnRand,\nrouteTo, keyId (apiKey), hmac }
+
+Backend --> WebApp: JSON { ok, redirectUrl: "/webapp/pay?..." }
+
+note over WebApp: All NETS fields passed as query params:\nn, e, netsMid, netsTxnRef, merchantTxnRef,\npaymtNetsMid, txnRand, keyId, hmac
+
+== Card entry ==
+note over WebApp: Client-side: window.location.href = redirectUrl
+WebApp -> Backend: GET /webapp/pay?n&e&netsMid&netsTxnRef\n&txnRand&keyId&hmac&paymtNetsMid&...
+Backend --> WebApp: Card payment page\n(loads eNETS RSA scripts from www.enets.sg)
+
+User -> WebApp: Enter name, email, card no., exp MM/YY, CVV
+note over WebApp: RSA encrypt (cardNo + cvv)\nusing n/e from TxnReqListener\nexpiryYear sent as 4-digit ("20" + YY)
+
+WebApp -> Backend: POST /webapp/enets_pay\n(enc, netsMid, netsTxnRef, merchantTxnRef,\ntxnRand, keyId, hmac, name, expiryMonth,\nexpiryYear, consumerEmail, browserInfo...\nmeterId, address, balance, amount)
+
+== Payment processing ==
+note over Backend: step 4a: fetchEnvJsp() — seed JSESSIONID
+Backend -> NETS: GET /GW2/pluginpages/env.jsp
+NETS --> Backend: Set-Cookie: JSESSIONID (env session)
+
+note over Backend: step 4b: callCreditInit() — establish credit session
+Backend -> NETS: POST /GW2/credit/init;jsessionid=...\n(txnRand, paymentMode=CC_1, routeTo=FEH)
+NETS --> Backend: Set-Cookie: JSESSIONID (credit session)
+
+note over Backend: step 4c: submitPanForm()
+note over Backend: netsMid used here = paymtNetsMid\n(acquiring MID from paymtSvcInfoList[0]),\nnot the top-level UMID_xxx
+Backend -> NETS: POST /GW2/credit/panSubmitForm\n(enc, netsMid=paymtNetsMid, txnRand,\nname, expiryMonth, expiryYear (4-digit),\nconsumerEmail, browserInfo, ...)
+NETS --> Backend: HTML: message (JSON), hmac, KeyId,\npost_form action URL
+
+== Result path ==
+alt netsTxnStatus resolved in panSubmitForm message
+    note over Backend: preParsed: parse message JSON\nnetsTxnStatus "0" = success,\n"1" or ss="0" = failure
+    Backend --> WebApp: JSON { ok, status, reason,\nmerchantTxnRef, source: "pan_result" }
+
+else POST to b2s (action URL from post_form)
+    Backend -> EVS: POST /enets/b2s (or action URL)\n(message, hmac, KeyId)
+    EVS --> Backend: 303 redirect →\n/pay_result?r=&t=&a=&x=&s=&m=\n(all base64-encoded)
+    note over Backend: parsePayResult()\nbase64-decode r(result), t(meterId),\na(amount), x(txnRef), s(stageCode),\nm(message)\nFallback: HTML scrape if URL parse fails
+    Backend --> WebApp: JSON { ok, status, merchantTxnRef,\nmeterId, amount, reason,\nsource: "pay_result" }
+end
+
+== Final UI ==
+note over WebApp: Client-side: window.location.href = /webapp/result?...
+WebApp -> Backend: GET /webapp/result?status&ref&meterId\n&amount&reason&address&balance
+Backend --> WebApp: renderFinalResultPage()
+
+alt success
+    WebApp --> User: Top-Up Successful ✅
+else failure
+    WebApp --> User: Top-Up Failed ⚠️
+end
+
+@enduml

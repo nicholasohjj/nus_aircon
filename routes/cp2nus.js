@@ -5,6 +5,10 @@ const { getMeterSummary } = require("../services/ore");
 const { track, captureException } = require("../services/analytics");
 const { isValidMeterId, isValidAmount } = require("../services/validators");
 const { normalizeFinalOutcome } = require("../services/utils");
+const {
+  createPaymentSession,
+  getPaymentSession,
+} = require("../services/paymentSession");
 const { DEFAULT_HEADERS, CP2NUS_BASE_PATH } = require("../services/config");
 const {
   errorPage,
@@ -99,25 +103,18 @@ router.get("/webapp/bootstrap", async (req, res) => {
 
     track("bootstrap_succeeded", { meterId: txtMtrId, amount: txtAmount });
 
-    const params = new URLSearchParams({
+    const token = createPaymentSession({
       txtMtrId,
       txtAmount,
       address: boot.meta.address || "",
       balance: String(boot.meta.balance ?? ""),
-      n: boot.nets.rsaModulus || "",
-      e: boot.nets.rsaExponent || "",
-      netsMid: boot.nets.netsMid || "",
-      netsTxnRef: boot.nets.netsTxnRef || "",
-      merchantTxnRef: boot.nets.merchantTxnRef || "",
-      paymtNetsMid: boot.nets.paymtNetsMid || "",
-      txnRand: boot.nets.txnRand || "",
-      keyId: boot.nets.keyId || "",
-      hmac: boot.nets.hmac || "",
+      nets: boot.nets,
+      status: "pending", // authoritative status lives here
     });
 
     return res.status(200).json({
       ok: true,
-      redirectUrl: CP2NUS_BASE_PATH + "/webapp/pay?" + params.toString(),
+      redirectUrl: `${CP2NUS_BASE_PATH}/webapp/pay?token=${token}`,
     });
   } catch (err) {
     captureException(err, String(txtMtrId || "anonymous"), {
@@ -144,33 +141,41 @@ router.get("/webapp/bootstrap", async (req, res) => {
 // ── Card payment page ─────────────────────────────────────────────────────────
 
 router.get("/webapp/pay", (req, res) => {
-  const {
-    txtMtrId,
-    txtAmount,
-    address = "",
-    balance = "",
-    n,
-    e,
-    netsMid,
-    netsTxnRef,
-    merchantTxnRef,
-    txnRand = "",
-    keyId = "",
-    hmac = "",
-  } = req.query;
-
-  if (!txtMtrId || !txtAmount || !n || !e || !netsMid || !netsTxnRef) {
+  const { token } = req.query;
+  if (!token) return res.status(400).send(errorPage("Missing payment token."));
+  const session = getPaymentSession(token);
+  if (!session)
     return res
       .status(400)
-      .send(errorPage("Missing required payment parameters."));
+      .send(
+        errorPage("Payment session expired or invalid. Please start again."),
+      );
+
+  const { txtMtrId, txtAmount, address, balance, nets } = session;
+  const {
+    rsaModulus,
+    rsaExponent,
+    netsTxnRef,
+    merchantTxnRef,
+    txnRand,
+    keyId,
+    hmac,
+    paymtNetsMid,
+    netsMid,
+  } = nets;
+
+  if (!rsaModulus || !rsaExponent) {
+    return res
+      .status(500)
+      .send(errorPage("Payment gateway did not return a valid RSA key."));
   }
 
   res.setHeader("Content-Type", "text/html; charset=UTF-8");
   return res.send(
     cardPaymentPage({
-      n,
-      e,
-      netsMid,
+      n: rsaModulus,
+      e: rsaExponent,
+      netsMid: paymtNetsMid || netsMid,
       netsTxnRef,
       merchantTxnRef: merchantTxnRef || "",
       amount: txtAmount,
@@ -181,6 +186,7 @@ router.get("/webapp/pay", (req, res) => {
       keyId,
       hmac,
       basePath: CP2NUS_BASE_PATH,
+      token,
     }),
   );
 });
@@ -217,6 +223,14 @@ router.post(
         balance,
         amount,
       } = req.body;
+
+      const { token } = req.body;
+      const session = getPaymentSession(token);
+      if (!session) {
+        return res
+          .status(400)
+          .json({ ok: false, error: "Invalid or expired payment session." });
+      }
 
       if (!enc || !netsMid || !merchantTxnRef) {
         return res.status(400).json({
@@ -271,6 +285,10 @@ router.post(
 
       if (panResult.preParsed) {
         const normalized = normalizeFinalOutcome(panResult.preParsed);
+
+        session.status = normalized.status;
+        session.merchantTxnRef = normalized.merchantTxnRef || merchantTxnRef;
+        session.completedAt = Date.now();
         return res.status(200).json({
           ok: true,
           source: "pan_result",
@@ -298,6 +316,10 @@ router.post(
       const normalized = normalizeFinalOutcome(parsed);
       const finalAmount = parsed.amount || amount || "";
 
+      session.status = normalized.status;
+      session.merchantTxnRef = normalized.merchantTxnRef || merchantTxnRef;
+      session.completedAt = Date.now();
+
       return res.status(200).json({
         ok: true,
         source: "pay_result",
@@ -324,34 +346,47 @@ router.post(
 // ── Result page ───────────────────────────────────────────────────────────────
 
 router.get("/webapp/result", (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).send(errorPage("Missing result token."));
+
+  const session = getPaymentSession(token);
+  if (!session)
+    return res
+      .status(400)
+      .send(
+        errorPage(
+          "Session expired. Check your meter balance to confirm payment.",
+        ),
+      );
+
+  // All values come from server-side session, not query params:
   const {
-    status = "unknown",
-    ref = "",
-    meterId = "",
-    amount = "",
-    reason = "",
-    address = "",
-    balance = "",
-  } = req.query;
+    status,
+    merchantTxnRef,
+    txtMtrId,
+    txtAmount,
+    reason,
+    address,
+    balance,
+  } = session;
 
   const eventName =
     status === "success" ? "payment_completed" : "payment_failed";
   track(eventName, {
-    meterId,
-    amount,
+    meterId: txtMtrId,
+    amount: txtAmount,
     status,
-    merchantTxnRef: ref,
+    merchantTxnRef,
     reason: reason || null,
   });
-
   res.setHeader("Content-Type", "text/html; charset=UTF-8");
   return res.send(
     renderFinalResultPage(
       {
         status,
-        merchantTxnRef: ref,
-        meterId,
-        amount,
+        merchantTxnRef,
+        meterId: txtMtrId,
+        amount: txtAmount,
         reason,
         address,
         balance,

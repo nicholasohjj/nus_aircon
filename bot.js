@@ -416,7 +416,7 @@ bot.on("text", async (ctx) => {
     const notifyLines = [
       `📬 *New Feedback*`,
       `👤 From: \`${chatId}\``,
-      `${stars} Rating: ${session.feedbackRating}/5`,
+      `${stars} Rating: ${feedbackRating}/5`,
     ];
     if (feedbackText)
       notifyLines.push(`💬 Message: _${escapeMarkdown(feedbackText)}_`);
@@ -507,6 +507,7 @@ bot.on("text", async (ctx) => {
     } finally {
       session.inFlight = false;
     }
+    return;
   }
 
   if (session.stage === "awaiting_meter_id_usage") {

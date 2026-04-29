@@ -1,5 +1,6 @@
 const { escHtml } = require("../services/utils");
 const { CP2NUS_BASE_PATH } = require("../services/config");
+
 function errorPage(msg) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Error</title>
   <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;
@@ -140,6 +141,7 @@ function cardPaymentPage({
   keyId = "",
   hmac = "",
   basePath = CP2NUS_BASE_PATH,
+  token = "",
 }) {
   const amtDisplay = Number(amount || 0).toFixed(2);
   return `<!DOCTYPE html>
@@ -250,7 +252,8 @@ function cardPaymentPage({
       <input type="hidden" name="txnRand"        value="${escHtml(txnRand)}">
       <input type="hidden" name="keyId"          value="${escHtml(keyId)}">
       <input type="hidden" name="hmac"           value="${escHtml(hmac)}">
-  
+      <input type="hidden" name="token" value="${escHtml(token)}">
+
       <button type="submit" class="btn" id="submitBtn">
         <span id="btnLabel">Pay SGD ${escHtml(amtDisplay)}</span>
       </button>
@@ -345,8 +348,11 @@ function cardPaymentPage({
         const hmacVal  = document.querySelector('input[name=hmac]').value;
         const netsMid  = document.querySelector('input[name=netsMid]').value;
         const netsTxnRef = document.querySelector('input[name=netsTxnRef]').value;
-  
+        const token = document.querySelector('input[name=token]').value;
+        
         const payload = new URLSearchParams({
+        token,
+
           browserJavaEnabled:       'false',
           browserJavaScriptEnabled: 'true',
           browserLanguage:          navigator.language || 'en-US',
@@ -385,18 +391,8 @@ function cardPaymentPage({
   
         const out = await result.json().catch(() => ({}));
         if (!result.ok || !out.ok) throw new Error(out.error || 'Payment request failed');
-  
-        const q = new URLSearchParams({
-          status:  out.status          || 'unknown',
-          ref:     out.merchantTxnRef  || MERCHANT_TXN_REF || '',
-          meterId: out.meterId         || ${JSON.stringify(meterId)},
-          amount:  out.amount          || ('SGD ' + amtDisplay),
-          reason:  out.reason          || '',
-          address: out.address         || ${JSON.stringify(address)},
-          balance: ${JSON.stringify(balance)},
-        }).toString();
-  
-        window.location.href = '${escHtml(basePath)}/webapp/result?' + q;
+
+        window.location.href = '${escHtml(basePath)}/webapp/result?token=' + encodeURIComponent(${JSON.stringify(token)});
   
       } catch (err) {
         btn.disabled = false;
@@ -480,7 +476,13 @@ function renderFinalResultPage(parsed, basePath = CP2NUS_BASE_PATH) {
         ? `<div class="detail-row"><span class="detail-label">Balance</span><span class="detail-value">SGD ${escHtml(Number(parsed.balance).toFixed(2))}</span></div>`
         : ""
     }
-    <div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value">${escHtml(parsed.amount || "-")}</span></div>
+    ${
+      parsed.amount !== undefined &&
+      parsed.amount !== null &&
+      parsed.amount !== ""
+        ? `<div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value">SGD ${escHtml(Number(String(parsed.amount).replace(/[^0-9.]/g, "")).toFixed(2))}</span></div>`
+        : `<div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value">-</span></div>`
+    }
     <div class="status-note">${escHtml(reason)}</div>
     <div class="actions">
       <button class="btn" onclick="window.location.href='${escHtml(basePath)}/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || "")}&txtAmount=${encodeURIComponent((parsed.amount || "").replace(/[^0-9.]/g, ""))}'" >Top Up Again</button>

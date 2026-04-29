@@ -125,7 +125,9 @@ function helpText() {
 }
 
 function escapeMarkdown(text) {
-  return String(text || "").replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
+  return String(text || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
 }
 
 async function sendHelp(ctx) {
@@ -183,21 +185,21 @@ bot.hears("⚡ Top Up", async (ctx) => {
   return ctx.reply("🏠 Please select your hostel:", hostelKeyboard());
 });
 
-bot.hears("💬 Feedback", async (ctx) => {
-  const chatId = ctx.chat?.id;
-  if (!chatId) return;
+// bot.hears("💬 Feedback", async (ctx) => {
+//   const chatId = ctx.chat?.id;
+//   if (!chatId) return;
 
-  track("feedback_button", { chatId });
+//   track("feedback_button", { chatId });
 
-  resetSession(chatId);
-  const session = getSession(chatId);
-  session.stage = "awaiting_feedback_rating";
+//   resetSession(chatId);
+//   const session = getSession(chatId);
+//   session.stage = "awaiting_feedback_rating";
 
-  return ctx.reply(
-    "💬 *Share your feedback*\n\nHow would you rate your experience?",
-    { parse_mode: "Markdown", ...ratingKeyboard() },
-  );
-});
+//   return ctx.reply(
+//     "💬 *Share your feedback*\n\nHow would you rate your experience?",
+//     { parse_mode: "Markdown", ...ratingKeyboard() },
+//   );
+// });
 
 bot.start(async (ctx) => {
   const chatId = ctx.chat?.id;
@@ -330,10 +332,11 @@ bot.on("text", async (ctx) => {
       `📝 FEEDBACK from ${chatId}: rating=${session.feedbackRating}`,
       feedbackText ? `| message="${feedbackText}"` : "(no message)",
     );
+    const { feedbackRating } = session;
 
     resetSession(chatId);
 
-    const stars = "⭐".repeat(session.feedbackRating ?? 0);
+    const stars = "⭐".repeat(feedbackRating ?? 0);
     const notifyLines = [
       `📬 *New Feedback*`,
       `👤 From: \`${chatId}\``,
@@ -342,11 +345,13 @@ bot.on("text", async (ctx) => {
     if (feedbackText)
       notifyLines.push(`💬 Message: _${escapeMarkdown(feedbackText)}_`);
 
-    await bot.telegram
-      .sendMessage(OWNER_CHAT_ID, notifyLines.join("\n"), {
-        parse_mode: "Markdown",
-      })
-      .catch((err) => console.error("Failed to notify owner:", err));
+    if (OWNER_CHAT_ID) {
+      await bot.telegram
+        .sendMessage(OWNER_CHAT_ID, notifyLines.join("\n"), {
+          parse_mode: "Markdown",
+        })
+        .catch((err) => console.error("Failed to notify owner:", err));
+    }
     return ctx.replyWithMarkdown(
       `✅ *Thanks for your feedback!*\n\n${stars}\n\n` +
         (feedbackText ? `_"${escapeMarkdown(feedbackText)}"_\n\n` : "") +
@@ -392,8 +397,8 @@ bot.on("text", async (ctx) => {
     session.txtMtrId = text;
     if (session.inFlight) return ctx.reply("⏳ Please wait…");
     session.inFlight = true;
-    await ctx.reply("🔍 Fetching meter details…");
     try {
+      await ctx.reply("🔍 Fetching meter details…");
       const [summary, usage] = await Promise.all([
         getMeterSummary(text),
         getMeterUsage(text, 7),

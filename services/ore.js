@@ -251,13 +251,13 @@ async function formatUsageSummary(
   const lines = [];
 
   if (a.lastDay != null) {
-    lines.push(`📈 *Yesterday:* SGD ${a.lastDay.toFixed(2)}`);
+    lines.push(`📈 <b>Yesterday:</b> SGD ${a.lastDay.toFixed(2)}`);
   }
   if (a.avgDaily != null) {
-    lines.push(`📊 *${days}-day avg:* SGD ${a.avgDaily.toFixed(2)} / day`);
+    lines.push(`📊 <b>${days}-day avg:</b> SGD ${a.avgDaily.toFixed(2)} / day`);
   }
   if (a.total != null) {
-    lines.push(`🧮 *${days}-day total:* SGD ${a.total.toFixed(2)}`);
+    lines.push(`🧮 <b>${days}-day total:</b> SGD ${a.total.toFixed(2)}`);
   }
 
   if (meterId) {
@@ -274,13 +274,15 @@ async function formatUsageSummary(
         const pct = (Number(rank.rank_val) * 100).toFixed(0);
         const buildingAvg = Number(rank.ref_val).toFixed(2);
         lines.push(
-          `🏆 *Building rank:* top ${100 - pct}% (building avg: SGD ${buildingAvg}/day)`,
+          `🏆 <b>Building rank:</b> top ${100 - pct}% (building avg: SGD ${buildingAvg}/day)`,
         );
       }
 
       if (mtd !== null) {
         // negative = spent, so display as positive cost
-        lines.push(`🗓️ *This month so far:* SGD ${Math.abs(mtd).toFixed(2)}`);
+        lines.push(
+          `🗓️ <b>This month so far:</b> SGD ${Math.abs(mtd).toFixed(2)}`,
+        );
       }
     } catch {
       // silently skip if rank fetch fails

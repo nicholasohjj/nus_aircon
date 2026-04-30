@@ -1,11 +1,13 @@
 require("dotenv").config();
 const { Telegraf, Markup } = require("telegraf");
-
+const { escHtml } = require("./services/utils");
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
 const OWNER_CHAT_ID = process.env.OWNER_CHAT_ID; // get this from @userinfobot
 const pendingReplies = new Map();
 const PENDING_REPLY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+const chatLocks = new Map();
 
 const hostelInlineKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback("🏠 PGPR / PGP / RC / NUSC (cp2)", "hostel_cp2")],
@@ -83,7 +85,7 @@ function getSession(chatId) {
   const s = sessions[chatId];
 
   if (!s || (s.updatedAt && now - s.updatedAt > SESSION_TTL_MS)) {
-    sessions[chatId] = { stage: "idle", updatedAt: now, inFlight: false };
+    sessions[chatId] = { stage: "idle", updatedAt: now };
   } else {
     sessions[chatId].updatedAt = now;
   }
@@ -91,8 +93,28 @@ function getSession(chatId) {
   return sessions[chatId];
 }
 
+async function withChatLock(chatId, fn) {
+  // Chain onto the existing lock for this chat, or resolve immediately
+  const prev = chatLocks.get(chatId) ?? Promise.resolve();
+  let release;
+  const next = new Promise((res) => (release = res));
+  chatLocks.set(
+    chatId,
+    prev.then(() => next),
+  );
+
+  try {
+    await prev; // wait for previous handler to finish
+    return await fn();
+  } finally {
+    release(); // unblock the next handler
+    // Clean up if no more waiters
+    if (chatLocks.get(chatId) === next) chatLocks.delete(chatId);
+  }
+}
+
 function resetSession(chatId) {
-  sessions[chatId] = { stage: "idle", updatedAt: Date.now(), inFlight: false };
+  sessions[chatId] = { stage: "idle", updatedAt: Date.now() };
 }
 
 function ratingKeyboard() {
@@ -114,9 +136,11 @@ function parseStar(text) {
 }
 
 function startTopUp(chatId) {
+  const savedMeterId = sessions[chatId]?.txtMtrId; // preserve it
   resetSession(chatId);
   const session = getSession(chatId);
   session.stage = "awaiting_hostel";
+  if (savedMeterId) session.txtMtrId = savedMeterId;
   return session;
 }
 
@@ -147,12 +171,6 @@ function helpText() {
     `• /cancel — cancel the current flow\n` +
     `• /help — show this message`
   );
-}
-
-function escapeMarkdown(text) {
-  return String(text || "")
-    .replace(/\\/g, "\\\\")
-    .replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
 }
 
 async function sendHelp(ctx) {
@@ -222,7 +240,7 @@ bot.hears("⚡ Top Up", async (ctx) => {
 
 //   return ctx.reply(
 //     "💬 *Share your feedback*\n\nHow would you rate your experience?",
-//     { parse_mode: "Markdown", ...ratingKeyboard() },
+//     { parse_mode: "HTML", ...ratingKeyboard() },
 //   );
 // });
 
@@ -241,14 +259,14 @@ bot.start(async (ctx) => {
     session.txtMtrId = meterId;
 
     return ctx.reply(
-      `⚡ EVS Electricity Top-Up\n\n🔌 Meter ID *${meterId}* detected.\n\nPlease select your hostel:`,
-      { parse_mode: "Markdown", ...hostelInlineKeyboard }, // ← fix
+      `⚡ EVS Electricity Top-Up\n\nPlease select your hostel:\n\n📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
+      { parse_mode: "HTML", reply_markup: hostelInlineKeyboard.reply_markup },
     );
   }
 
   return ctx.reply(
-    "⚡ EVS Electricity Top-Up\n\nChoose an option below:",
-    mainKeyboard,
+    `⚡ EVS Electricity Top-Up\n\nChoose an option below:\n\n📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
+    { parse_mode: "HTML", reply_markup: mainKeyboard.reply_markup },
   );
 });
 
@@ -303,7 +321,7 @@ bot.command("feedback", async (ctx) => {
 
   return ctx.reply(
     "💬 *Share your feedback*\n\nHow would you rate your experience?",
-    { parse_mode: "Markdown", ...ratingKeyboard() },
+    { parse_mode: "HTML", ...ratingKeyboard() },
   );
 });
 
@@ -400,8 +418,8 @@ bot.on("message", async (ctx, next) => {
   await bot.telegram
     .sendMessage(
       targetChatId,
-      `💬 *Message from the developer:*\n\n${escapeMarkdown(replyText)}`,
-      { parse_mode: "Markdown" },
+      `💬 <b>Message from the developer:</b>\n\n${escHtml(replyText)}`,
+      { parse_mode: "HTML" },
     )
     .then(() => {
       pendingReplies.delete(replyToId);
@@ -416,254 +434,260 @@ bot.on("text", async (ctx) => {
   const chatId = ctx.chat?.id;
   if (!chatId) return;
 
-  const text = String(ctx.message?.text || "").trim();
-  if (!text || text.startsWith("/")) return;
+  await withChatLock(chatId, async () => {
+    const text = String(ctx.message?.text || "").trim();
+    if (!text || text.startsWith("/")) return;
 
-  const session = getSession(chatId);
+    const session = getSession(chatId);
 
-  if (session.stage === "awaiting_feedback_rating") {
-    const rating = parseStar(text);
-    if (rating === null) {
+    if (session.stage === "awaiting_feedback_rating") {
+      const rating = parseStar(text);
+      if (rating === null) {
+        return ctx.reply(
+          "⚠️ Please tap one of the star buttons to rate your experience.",
+          ratingKeyboard(),
+        );
+      }
+
+      session.feedbackRating = rating;
+      session.stage = "awaiting_feedback_text";
+
+      const stars = "⭐".repeat(rating);
       return ctx.reply(
-        "⚠️ Please tap one of the star buttons to rate your experience.",
-        ratingKeyboard(),
+        `${stars} Got it!\n\nNow please type your feedback or any comments (or tap <b>Skip</b> to submit without a message):`,
+        {
+          parse_mode: "HTML",
+          ...Markup.keyboard([["⏭ Skip"], ["❌ Cancel"]]).resize(),
+        },
       );
     }
 
-    session.feedbackRating = rating;
-    session.stage = "awaiting_feedback_text";
+    if (session.stage === "awaiting_feedback_text") {
+      const feedbackText = text === "⏭ Skip" ? null : text;
 
-    const stars = "⭐".repeat(rating);
-    return ctx.reply(
-      `${stars} Got it!\n\nNow please type your feedback or any comments (or tap *Skip* to submit without a message):`,
-      {
-        parse_mode: "Markdown",
-        ...Markup.keyboard([["⏭ Skip"], ["❌ Cancel"]]).resize(),
-      },
-    );
-  }
-
-  if (session.stage === "awaiting_feedback_text") {
-    const feedbackText = text === "⏭ Skip" ? null : text;
-
-    track("feedback_submitted", {
-      chatId,
-      rating: session.feedbackRating,
-      message: feedbackText,
-    });
-
-    // Log to console so it's easy to grep in server logs even without a DB
-    console.log(
-      `📝 FEEDBACK from ${chatId}: rating=${session.feedbackRating}`,
-      feedbackText ? `| message="${feedbackText}"` : "(no message)",
-    );
-    const { feedbackRating } = session;
-
-    resetSession(chatId);
-
-    const stars = "⭐".repeat(feedbackRating ?? 0);
-    const notifyLines = [
-      `📬 *New Feedback*`,
-      `👤 From: \`${chatId}\``,
-      `${stars} Rating: ${feedbackRating}/5`,
-    ];
-    if (feedbackText)
-      notifyLines.push(`💬 Message: _${escapeMarkdown(feedbackText)}_`);
-
-    if (OWNER_CHAT_ID) {
-      const notifyMsg = await bot.telegram
-        .sendMessage(OWNER_CHAT_ID, notifyLines.join("\n"), {
-          parse_mode: "Markdown",
-        })
-        .catch((err) => {
-          console.error("Failed to notify owner:", err);
-          return null;
-        });
-
-      // store mapping: notification message_id -> original user's chatId
-      if (notifyMsg) {
-        pendingReplies.set(notifyMsg.message_id, {
-          chatId,
-          createdAt: Date.now(),
-        });
-      }
-    }
-    return ctx.replyWithMarkdown(
-      `✅ *Thanks for your feedback!*\n\n${stars}\n\n` +
-        (feedbackText ? `_"${escapeMarkdown(feedbackText)}"_\n\n` : "") +
-        `Your input helps us improve the bot.`,
-      mainKeyboard,
-    );
-  }
-
-  if (session.stage === "awaiting_meter_id") {
-    if (!isValidMeterId(text)) {
-      return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
-    }
-
-    session.txtMtrId = text;
-    if (session.inFlight) return ctx.reply("⏳ Please wait…");
-    session.inFlight = true;
-    await ctx.sendChatAction("typing");
-    const loadingMsg = await ctx
-      .reply("🔍 Fetching meter details…")
-      .catch(() => null);
-    if (!loadingMsg) return;
-
-    try {
-      const [summary, usage] = await Promise.all([
-        getMeterSummary(text),
-        getMeterUsage(text, 7),
-      ]);
-
-      session.stage = "awaiting_amount";
-
-      const lines = [`✅ Meter ID: \`${text}\``];
-
-      if (summary.address) {
-        lines.push(`🏠 *Address:* ${escapeMarkdown(summary.address)}`);
-      }
-
-      const bal = Number(summary.credit_bal);
-      if (summary.credit_bal != null && Number.isFinite(bal)) {
-        lines.push(`💰 *Balance:* SGD ${bal.toFixed(2)}`);
-      }
-
-      const usageText = await formatUsageSummary(
-        usage.history,
-        summary.credit_bal,
-        7,
-        text,
-      );
-      if (usageText) {
-        lines.push("");
-        lines.push("*Daily consumption*");
-        lines.push(usageText);
-      }
-
-      lines.push("");
-      lines.push(
-        "Now enter the *amount in SGD* (e.g. `20` for $20.00, min $6, max $50):",
-      );
-
-      await ctx.telegram
-        .editMessageText(
-          chatId,
-          loadingMsg.message_id,
-          undefined,
-          lines.join("\n"),
-          { parse_mode: "Markdown" },
-        )
-        .catch(() => ctx.reply(lines.join("\n"), { parse_mode: "Markdown" }));
-    } catch (err) {
-      track("prefill_usage_error", {
+      track("feedback_submitted", {
         chatId,
-        meterId: text,
-        error: err.message,
+        rating: session.feedbackRating,
+        message: feedbackText,
       });
-      session.stage = "awaiting_amount";
-      const fallback = `✅ Meter ID: \`${text}\`\n\n⚠️ Couldn't fetch usage.\n\nEnter amount (min $6, max $50):`;
 
-      await ctx.telegram
-        .editMessageText(chatId, loadingMsg.message_id, undefined, fallback, {
-          parse_mode: "Markdown",
-        })
-        .catch(() => ctx.reply(fallback, { parse_mode: "Markdown" }));
-    } finally {
-      session.inFlight = false;
+      // Log to console so it's easy to grep in server logs even without a DB
+      console.log(
+        `📝 FEEDBACK from ${chatId}: rating=${session.feedbackRating}`,
+        feedbackText ? `| message="${feedbackText}"` : "(no message)",
+      );
+      const { feedbackRating } = session;
+
+      resetSession(chatId);
+
+      const stars = "⭐".repeat(feedbackRating ?? 0);
+      const notifyLines = [
+        `📬 <b>New Feedback</b>`,
+        `👤 From: <code>${chatId}</code>`,
+        `${stars} Rating: ${feedbackRating}/5`,
+      ];
+
+      if (feedbackText)
+        notifyLines.push(`💬 Message: <i>${escHtml(feedbackText)}</i>`);
+
+      if (OWNER_CHAT_ID) {
+        const notifyMsg = await bot.telegram
+          .sendMessage(OWNER_CHAT_ID, notifyLines.join("\n"), {
+            parse_mode: "HTML",
+          })
+          .catch((err) => {
+            console.error("Failed to notify owner:", err);
+            return null;
+          });
+
+        // store mapping: notification message_id -> original user's chatId
+        if (notifyMsg) {
+          pendingReplies.set(notifyMsg.message_id, {
+            chatId,
+            createdAt: Date.now(),
+          });
+        }
+      }
+      return ctx.reply(
+        `✅ <b>Thanks for your feedback!</b>\n\n${stars}\n\n` +
+          (feedbackText ? `<i>"${escHtml(feedbackText)}"</i>\n\n` : "") +
+          `Your input helps us improve the bot.`,
+        { parse_mode: "HTML", ...mainKeyboard },
+      );
     }
-    return;
-  }
 
-  if (session.stage === "awaiting_meter_id_usage") {
-    if (!isValidMeterId(text)) {
-      return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
-    }
-
-    session.stage = "idle";
-    if (session.inFlight) return ctx.reply("⏳ Please wait…");
-    session.inFlight = true;
-    await ctx.sendChatAction("typing");
-    const loadingMsg = await ctx
-      .reply("🔍 Checking recent usage…")
-      .catch(() => null);
-    if (!loadingMsg) return;
-    try {
-      const [summary, usage] = await Promise.all([
-        getMeterSummary(text),
-        getMeterUsage(text, 7),
-      ]);
-
-      const lines = [`⚡ *Meter ID:* \`${text}\``];
-      if (summary.address) lines.push(`🏠 *Address:* ${summary.address}`);
-
-      const bal = Number(summary.credit_bal);
-      if (summary.credit_bal != null && Number.isFinite(bal)) {
-        lines.push(`💰 *Balance:* SGD ${bal.toFixed(2)}`);
+    if (session.stage === "awaiting_meter_id") {
+      if (!isValidMeterId(text)) {
+        return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
       }
 
-      lines.push("");
-      lines.push("*Daily consumption (last 7 days)*");
-      lines.push(
-        (await formatUsageSummary(
+      session.txtMtrId = text;
+      await ctx.sendChatAction("typing");
+      const loadingMsg = await ctx
+        .reply("🔍 Fetching meter details…")
+        .catch(() => null);
+      if (!loadingMsg) return;
+
+      try {
+        const [summary, usage] = await Promise.all([
+          getMeterSummary(text),
+          getMeterUsage(text, 7),
+        ]);
+
+        session.stage = "awaiting_amount";
+
+        const lines = [`✅ Meter ID: <code>${text}</code>`];
+
+        if (summary.address) {
+          lines.push(`🏠 <b>Address:</b> ${escHtml(summary.address)}`);
+        }
+
+        const bal = Number(summary.credit_bal);
+        if (summary.credit_bal != null && Number.isFinite(bal)) {
+          lines.push(`💰 <b>Balance:</b> SGD ${bal.toFixed(2)}`);
+        }
+
+        const usageText = await formatUsageSummary(
           usage.history,
           summary.credit_bal,
           7,
           text,
-        )) || "No usage data available.",
-      );
-
-      await ctx.telegram
-        .editMessageText(
-          chatId,
-          loadingMsg.message_id,
-          undefined,
-          lines.join("\n"),
-          { parse_mode: "Markdown" },
-        )
-        .catch(() => ctx.reply(lines.join("\n"), { parse_mode: "Markdown" }));
-      return ctx.reply("Choose an option:", mainKeyboard);
-    } catch (err) {
-      track("usage_error", { chatId, meterId: text, error: err.message });
-      await ctx.telegram
-        .editMessageText(
-          chatId,
-          loadingMsg.message_id,
-          undefined,
-          "⚠️ Failed to fetch usage history. Please try again.",
-        )
-        .catch(() =>
-          ctx.reply("⚠️ Failed to fetch usage history. Please try again."),
         );
-      return ctx.reply("Choose an option:", mainKeyboard);
-    } finally {
-      session.inFlight = false;
+        if (usageText) {
+          lines.push("");
+          lines.push("<b>Daily consumption</b>");
+          lines.push(usageText);
+        }
+
+        lines.push("");
+        lines.push(
+          "Now enter the <b>amount in SGD</b> (e.g. <code>20</code> for $20.00, min $6, max $50):",
+        );
+
+        await ctx.telegram
+          .editMessageText(
+            chatId,
+            loadingMsg.message_id,
+            undefined,
+            lines.join("\n"),
+            { parse_mode: "HTML" },
+          )
+          .catch(() => ctx.reply(lines.join("\n"), { parse_mode: "HTML" }));
+      } catch (err) {
+        track("prefill_usage_error", {
+          chatId,
+          meterId: text,
+          error: err.message,
+        });
+        session.stage = "awaiting_meter_id";
+        delete session.txtMtrId;
+
+        const fallback = `⚠️ Meter ID <code>${text}</code> could not be found. Please check and try again:`;
+
+        await ctx.telegram
+          .editMessageText(chatId, loadingMsg.message_id, undefined, fallback, {
+            parse_mode: "HTML",
+          })
+          .catch(() => ctx.reply(fallback, { parse_mode: "HTML" }));
+      }
+      return;
     }
-  }
 
-  if (session.stage === "awaiting_amount") {
-    const amt = Number(text);
+    if (session.stage === "awaiting_meter_id_usage") {
+      if (!isValidMeterId(text)) {
+        return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
+      }
 
-    if (!isValidAmount(amt)) {
-      return ctx.reply("⚠️ Please enter a valid amount between $6 and $50.");
+      session.stage = "idle";
+      await ctx.sendChatAction("typing");
+      const loadingMsg = await ctx
+        .reply("🔍 Checking recent usage…")
+        .catch(() => null);
+      if (!loadingMsg) return;
+      try {
+        const [summary, usage] = await Promise.all([
+          getMeterSummary(text),
+          getMeterUsage(text, 7),
+        ]);
+
+        const lines = [`⚡ <b>Meter ID:</b> <code>${text}</code>`];
+        if (summary.address)
+          lines.push(`🏠 <b>Address:</b> ${escHtml(summary.address)}`);
+
+        const bal = Number(summary.credit_bal);
+        if (summary.credit_bal != null && Number.isFinite(bal)) {
+          lines.push(`💰 <b>Balance:</b> SGD ${bal.toFixed(2)}`);
+        }
+
+        lines.push("");
+        lines.push("<b>Daily consumption (last 7 days)</b>");
+        lines.push(
+          (await formatUsageSummary(
+            usage.history,
+            summary.credit_bal,
+            7,
+            text,
+          )) || "No usage data available.",
+        );
+
+        await ctx.telegram
+          .editMessageText(
+            chatId,
+            loadingMsg.message_id,
+            undefined,
+            lines.join("\n"),
+            { parse_mode: "HTML" },
+          )
+          .catch(() => ctx.reply(lines.join("\n"), { parse_mode: "HTML" }));
+        return ctx.reply("Choose an option:", mainKeyboard);
+      } catch (err) {
+        track("usage_error", { chatId, meterId: text, error: err.message });
+        await ctx.telegram
+          .editMessageText(
+            chatId,
+            loadingMsg.message_id,
+            undefined,
+            "⚠️ Failed to fetch usage history. Please try again.",
+          )
+          .catch(() =>
+            ctx.reply("⚠️ Failed to fetch usage history. Please try again."),
+          );
+        return ctx.reply("Choose an option:", mainKeyboard);
+      }
     }
 
-    const amountDollars = Number(amt.toFixed(2));
-    const amountCents = Math.round(amountDollars * 100);
+    if (session.stage === "awaiting_amount") {
+      if (
+        !session.txtMtrId ||
+        !isValidMeterId(session.txtMtrId) ||
+        !session.hostel
+      ) {
+        resetSession(chatId);
+        return ctx.reply(
+          "⚠️ No valid Meter ID on record. Please enter your 8-digit Meter ID:",
+          Markup.keyboard([["❌ Cancel"]]).resize(),
+        );
+      }
 
-    session.amountDollars = amountDollars;
-    session.amountCents = amountCents;
+      const amt = Number(text);
 
-    track("amount_accepted", {
-      chatId,
-      hostel: session.hostel,
-      meterId: session.txtMtrId,
-      amount: amountDollars,
-    });
+      if (!isValidAmount(amt)) {
+        return ctx.reply("⚠️ Please enter a valid amount between $6 and $50.");
+      }
 
-    if (session.inFlight) return ctx.reply("⏳ Please wait…");
-    session.inFlight = true;
-    try {
+      const amountDollars = Number(amt.toFixed(2));
+      const amountCents = Math.round(amountDollars * 100);
+
+      session.amountDollars = amountDollars;
+      session.amountCents = amountCents;
+
+      track("amount_accepted", {
+        chatId,
+        hostel: session.hostel,
+        meterId: session.txtMtrId,
+        amount: amountDollars,
+      });
+
       session.stage = "idle";
 
       const webAppPath = getWebAppPath(session.hostel);
@@ -722,71 +746,65 @@ bot.on("text", async (ctx) => {
           `Tap below to proceed to payment:`,
         Markup.inlineKeyboard([Markup.button.webApp("💳 Pay Now", webAppUrl)]),
       );
-    } finally {
-      // ← try closes / finally
-      session.inFlight = false;
-    } // ← finally closes
-  }
-
-  if (session.stage === "awaiting_meter_id_balance") {
-    if (!isValidMeterId(text)) {
-      return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
     }
 
-    session.stage = "idle";
-    if (session.inFlight) return ctx.reply("⏳ Please wait…");
-    session.inFlight = true;
-    await ctx.sendChatAction("typing");
-    const loadingMsg = await ctx
-      .reply("🔍 Checking balance…")
-      .catch(() => null);
-    if (!loadingMsg) return;
-    try {
-      const summary = await getMeterSummary(text);
-
-      const lines = [`⚡ *Meter ID:* \`${text}\``];
-      if (summary.address) lines.push(`🏠 *Address:* ${summary.address}`);
-
-      const bal = Number(summary.credit_bal);
-      if (summary.credit_bal != null && Number.isFinite(bal)) {
-        lines.push(`💰 *Balance:* SGD ${bal.toFixed(2)}`);
-      } else {
-        lines.push(`💰 *Balance:* unavailable`);
+    if (session.stage === "awaiting_meter_id_balance") {
+      if (!isValidMeterId(text)) {
+        return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
       }
 
-      await ctx.telegram
-        .editMessageText(
-          chatId,
-          loadingMsg.message_id,
-          undefined,
-          lines.join("\n"),
-          { parse_mode: "Markdown" }, // no reply_markup here
-        )
-        .catch(() => ctx.reply(lines.join("\n"), { parse_mode: "Markdown" }));
-      return ctx.reply("Choose an option:", mainKeyboard);
-    } catch (err) {
-      track("balance_error", { chatId, error: err.message });
-      await ctx.telegram
-        .editMessageText(
-          chatId,
-          loadingMsg.message_id,
-          undefined,
-          "⚠️ Failed to fetch balance. Please try again.",
-        )
-        .catch(() =>
-          ctx.reply("⚠️ Failed to fetch balance. Please try again."),
-        );
+      session.stage = "idle";
+      await ctx.sendChatAction("typing");
+      const loadingMsg = await ctx
+        .reply("🔍 Checking balance…")
+        .catch(() => null);
+      if (!loadingMsg) return;
+      try {
+        const summary = await getMeterSummary(text);
 
-      return ctx.reply("Choose an option:", mainKeyboard);
-    } finally {
-      session.inFlight = false;
+        const lines = [`⚡ <b>Meter ID:</b> <code>${text}</code>`];
+        if (summary.address)
+          lines.push(`🏠 <b>Address:</b> ${escHtml(summary.address)}`);
+
+        const bal = Number(summary.credit_bal);
+        if (summary.credit_bal != null && Number.isFinite(bal)) {
+          lines.push(`💰 <b>Balance:</b> SGD ${bal.toFixed(2)}`);
+        } else {
+          lines.push(`💰 <b>Balance:</b> unavailable`);
+        }
+
+        await ctx.telegram
+          .editMessageText(
+            chatId,
+            loadingMsg.message_id,
+            undefined,
+            lines.join("\n"),
+            { parse_mode: "HTML" }, // no reply_markup here
+          )
+          .catch(() => ctx.reply(lines.join("\n"), { parse_mode: "HTML" }));
+        return ctx.reply("Choose an option:", mainKeyboard);
+      } catch (err) {
+        track("balance_error", { chatId, error: err.message });
+        await ctx.telegram
+          .editMessageText(
+            chatId,
+            loadingMsg.message_id,
+            undefined,
+            "⚠️ Failed to fetch balance. Please try again.",
+          )
+          .catch(() =>
+            ctx.reply("⚠️ Failed to fetch balance. Please try again."),
+          );
+
+        return ctx.reply("Choose an option:", mainKeyboard);
+      }
     }
-  }
 
-  return ctx.reply(
-    "I didn’t understand that. Use /topup to top up, /balance to check balance, or /help for instructions.",
-    mainKeyboard,
-  );
+    return ctx.reply(
+      "I didn’t understand that. Use /topup to top up, /balance to check balance, or /help for instructions.",
+      mainKeyboard,
+    );
+  });
 });
 
 (async () => {

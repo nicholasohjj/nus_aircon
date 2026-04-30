@@ -546,10 +546,6 @@ router.post("/evs/creditpayment", async (req, res) => {
 // Serves a loading page, runs the full purchase flow server-side,
 // then renders the eNETS payment page directly inside the WebApp.
 
-router.get("/", (req, res) => {
-  res.send("Hello World");
-});
-
 router.get("/webapp", async (req, res) => {
   const { txtMtrId, txtAmount } = req.query;
 

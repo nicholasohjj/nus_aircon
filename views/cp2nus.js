@@ -1,4 +1,4 @@
-const { escHtml } = require("../services/utils");
+const { escHtml, safeJson } = require("../services/utils");
 const { CP2NUS_BASE_PATH } = require("../services/config");
 
 function errorPage(msg) {
@@ -83,15 +83,15 @@ function loadingPage(
     </div>
   
     <div class="error-card" id="errorCard"></div>
-    <button class="retry-btn" id="retryBtn" onclick="runFlow()">Try Again</button>
+<button class="retry-btn" id="retryBtn">Try Again</button>
   </div>
   
   <script>
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
-    const METER_ID   = ${JSON.stringify(txtMtrId).replace(/</g, "\\u003c").replace(/>/g, "\\u003e")};
-    const TXN_AMOUNT = ${JSON.stringify(txtAmount)};
-    const BASE_PATH  = ${JSON.stringify(basePath)};
+    const METER_ID   = ${safeJson(txtMtrId)};
+    const TXN_AMOUNT = ${safeJson(txtAmount)};
+    const BASE_PATH  = ${safeJson(basePath)};
   
     async function runFlow() {
       document.getElementById('errorCard').style.display   = 'none';
@@ -102,8 +102,7 @@ function loadingPage(
       try {
         document.getElementById('statusText').textContent = 'Creating transaction…';
   
-        const resp = await fetch(
-          '${escHtml(basePath)}/webapp/bootstrap?txtMtrId=' + encodeURIComponent(METER_ID) +
+        const resp = await fetch(BASE_PATH + '/webapp/bootstrap?txtMtrId=' + encodeURIComponent(METER_ID) +
           '&txtAmount=' + encodeURIComponent(TXN_AMOUNT)
         );
         const out = await resp.json().catch(() => ({}));
@@ -120,6 +119,8 @@ function loadingPage(
         document.getElementById('retryBtn').style.display = 'block';
       }
     }
+
+    document.getElementById('retryBtn').addEventListener('click', runFlow);
   
     runFlow();
   </script>
@@ -266,11 +267,11 @@ function cardPaymentPage({
     const tg = window.Telegram?.WebApp;
     if (tg) { tg.ready(); tg.expand(); }
   
-    const RSA_N          = ${JSON.stringify(n)};
-    const RSA_E          = ${JSON.stringify(e)};
-    const MERCHANT_TXN_REF = ${JSON.stringify(merchantTxnRef)};
-    const amtDisplay     = ${JSON.stringify(amtDisplay)};
-    const BASE_PATH      = ${JSON.stringify(basePath)};
+    const RSA_N          = ${safeJson(n)};
+    const RSA_E          = ${safeJson(e)};
+    const MERCHANT_TXN_REF = ${safeJson(merchantTxnRef)};
+    const amtDisplay     = ${safeJson(amtDisplay)};
+    const BASE_PATH      = ${safeJson(basePath)};
   
     function linebrk(str, maxLen) {
       let out = '', i = 0;
@@ -369,21 +370,21 @@ function cardPaymentPage({
           keyId,
           hmac:           hmacVal,
           currencyCode:   'SGD',
-          txnAmount:      String(Math.round(${JSON.stringify(Number(amount))} * 100)),
+          txnAmount:      String(Math.round(${safeJson(Number(amount))} * 100)),
           name:           fields.name,
           expiryMonth:    fields.mth,
           imgPayMode: 'on',
           expiryYear:     '20' + fields.yr,   // 4-digit: server uses as-is
           consumerEmail:  fields.email,
-          meterId:        ${JSON.stringify(meterId)},
-          address:        ${JSON.stringify(address)},
-          balance:        ${JSON.stringify(balance)},
+          meterId:        ${safeJson(meterId)},
+          address:        ${safeJson(address)},
+          balance:        ${safeJson(balance)},
           amount:         'S$ ' + amtDisplay,
         });
   
         document.getElementById('btnLabel').textContent = 'Processing…';
   
-        const result = await fetch('${escHtml(basePath)}/webapp/enets_pay', {
+        const result = await fetch(BASE_PATH + '/webapp/enets_pay', {
           method:  'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body:    payload.toString(),
@@ -392,7 +393,7 @@ function cardPaymentPage({
         const out = await result.json().catch(() => ({}));
         if (!result.ok || !out.ok) throw new Error(out.error || 'Payment request failed');
         
-        window.location.href = '${escHtml(basePath)}/webapp/result?token=' + encodeURIComponent(token);
+        window.location.href = BASE_PATH + '/webapp/result?token=' + encodeURIComponent(token);
   
       } catch (err) {
         btn.disabled = false;
@@ -485,10 +486,22 @@ function renderFinalResultPage(parsed, basePath = CP2NUS_BASE_PATH) {
     }
     <div class="status-note">${escHtml(reason)}</div>
     <div class="actions">
-      <button class="btn" onclick="window.location.href='${escHtml(basePath)}/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || "")}&txtAmount=${encodeURIComponent((parsed.amount || "").replace(/[^0-9.]/g, ""))}'" >Top Up Again</button>
-      <button class="btn secondary" onclick="window.Telegram?.WebApp?.close()">Close</button>
+<button class="btn" id="topUpAgainBtn"
+  data-url="${escHtml(basePath)}/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || "")}&txtAmount=${encodeURIComponent((parsed.amount || "").replace(/[^0-9.]/g, ""))}">
+  Top Up Again
+</button>
+<button class="btn secondary" id="closeBtn">Close</button>
     </div>
   </div>
+
+  <script>
+  document.getElementById('topUpAgainBtn').addEventListener('click', function() {
+    window.location.href = this.dataset.url;
+  });
+  document.getElementById('closeBtn').addEventListener('click', function() {
+    window.Telegram?.WebApp?.close();
+  });
+</script>
   </body>
   </html>`;
 }

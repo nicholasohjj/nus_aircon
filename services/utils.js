@@ -253,9 +253,14 @@ function resolveUpstreamLocation(baseUrl, location) {
   }
 }
 
+function safeJson(val) {
+  return JSON.stringify(val).replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
+}
+
 // ── Exports ───────────────────────────────────────────────────────────────────
 
 module.exports = {
+  safeJson,
   escHtml,
   htmlDecode,
   extractHiddenField,

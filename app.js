@@ -10,18 +10,38 @@ require("./bot");
 
 const app = express();
 
-app.get("/terms", (req, res) => {
+let termsHtml;
+try {
   const md = fs.readFileSync(path.join(__dirname, "terms.md"), "utf8");
-  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Terms of Use</title>
-  <style>body{font-family:sans-serif;max-width:720px;margin:40px auto;padding:0 20px;line-height:1.6}</style>
-  </head><body>${marked(md)}</body></html>`);
+  termsHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Terms of Use</title>
+  <style>body { font-family: sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; line-height: 1.6 }</style>
+</head>
+<body>${marked(md)}</body>
+</html>`;
+} catch (err) {
+  console.error("Failed to load terms.md:", err.message);
+}
+
+app.get("/terms", (req, res) => {
+  if (!termsHtml) return res.status(503).send("Terms temporarily unavailable.");
+  res.send(termsHtml);
 });
-app.get("/debug", (req, res) => res.send("cp2nus prefix reachable"));
+if (process.env.NODE_ENV !== "production") {
+  app.get("/debug", (req, res) => res.send("cp2nus prefix reachable"));
+}
 app.use("/cp2nus", cp2nus);
 app.use("/", cp2);
 
-const port = process.env.PORT || 3000;
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send("Something went wrong.");
+});
 
+const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`App listening on port: ${port}`);
 });

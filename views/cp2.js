@@ -619,6 +619,7 @@ function renderFinalResultPage(parsed) {
         reason: ${safeJson(parsed.reason || "")},
       });
       tg.sendData(payload);
+      tg.close();
     }
   }
 

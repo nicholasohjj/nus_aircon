@@ -63,16 +63,6 @@ const CALLBACK_HTML_NO_ID = `
 </body></html>
 `;
 
-// Single quotes in form attributes
-const CALLBACK_HTML_SINGLE_QUOTES = `
-<html><body>
-  <form method='POST'
-    action='https://cp2.evs.com.sg/EVSWebPOS/transSumServlet?status=1&id=TXN-SQ-001'>
-    <input type='hidden' name='message' value='sq-payload'>
-  </form>
-</body></html>
-`;
-
 // ── extractEvsCallbackFromHtml ────────────────────────────────────────────────
 
 describe("extractEvsCallbackFromHtml", () => {

@@ -401,6 +401,65 @@ bot.action("hostel_cp2nus", async (ctx) => {
   );
 });
 
+bot.on("web_app_data", async (ctx) => {
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
+  try {
+    const data = JSON.parse(ctx.webAppData?.data?.text() || "{}");
+    const {
+      status,
+      merchantTxnRef,
+      meterId,
+      amount,
+      address,
+      balance,
+      reason,
+    } = data;
+
+    const ok = status === "success";
+    const stars = ok ? "✅" : "⚠️";
+    const title = ok ? "*Top-Up Successful*" : "*Top-Up Failed*";
+
+    const lines = [
+      `${stars} ${title}`,
+      "",
+      `🔌 Meter ID: \`${meterId || "-"}\``,
+    ];
+
+    if (address) lines.push(`🏠 Address: ${address}`);
+
+    if (amount) {
+      const amtNum = Number(String(amount).replace(/[^0-9.]/g, ""));
+      if (!isNaN(amtNum)) lines.push(`💵 Amount: SGD ${amtNum.toFixed(2)}`);
+    }
+
+    if (balance !== "" && balance != null) {
+      const balNum = Number(balance);
+      if (!isNaN(balNum))
+        lines.push(`💰 New Balance: SGD ${balNum.toFixed(2)}`);
+    }
+
+    if (merchantTxnRef) lines.push(`🧾 Reference: \`${merchantTxnRef}\``);
+    if (!ok && reason) lines.push(`\n❌ Reason: ${reason}`);
+
+    track(ok ? "miniapp_closed_success" : "miniapp_closed_failed", {
+      chatId,
+      meterId,
+      status,
+    });
+
+    resetSession(chatId);
+    await ctx.replyWithMarkdown(lines.join("\n"), mainKeyboard);
+  } catch (err) {
+    console.error("web_app_data parse error", err);
+    await ctx.reply(
+      "Payment completed. Check your meter balance to confirm.",
+      mainKeyboard,
+    );
+  }
+});
+
 bot.on("message", async (ctx, next) => {
   const chatId = ctx.chat?.id;
   if (!chatId || String(chatId) !== String(OWNER_CHAT_ID)) return next();
@@ -688,13 +747,16 @@ bot.on("text", async (ctx) => {
         amount: amountDollars,
       });
 
-      session.stage = "idle";
-
       const webAppPath = getWebAppPath(session.hostel);
       const webAppUrl =
         `${SERVER_URL}${webAppPath}?txtMtrId=${encodeURIComponent(session.txtMtrId)}` +
         `&txtAmount=${encodeURIComponent(session.amountDollars)}`;
+
+      session.webAppUrl = webAppUrl;
+      session.stage = "awaiting_payment";
+
       console.log("🌐 WebApp URL =", webAppUrl);
+
       const hostelLabel =
         session.hostel === HOSTELS.CP2NUS
           ? "UTown Residence / RVRC (cp2nus)"
@@ -709,6 +771,7 @@ bot.on("text", async (ctx) => {
           webAppUrl,
           mode: "url_fallback",
         });
+
         await ctx.replyWithMarkdown(
           `📋 *Order Summary*\n\n` +
             `🏠 Hostel: *${hostelLabel}*\n` +
@@ -744,7 +807,20 @@ bot.on("text", async (ctx) => {
           `🔌 Meter ID: \`${session.txtMtrId}\`\n` +
           `💵 Amount: $${amountDollars.toFixed(2)} SGD\n\n` +
           `Tap below to proceed to payment:`,
-        Markup.inlineKeyboard([Markup.button.webApp("💳 Pay Now", webAppUrl)]),
+        Markup.keyboard([
+          [Markup.button.webApp("💳 Pay Now", webAppUrl)],
+          ["❌ Cancel"],
+        ]).resize(),
+      );
+    }
+
+    if (session.stage === "awaiting_payment") {
+      return ctx.reply(
+        "💳 Please tap the Pay Now button below to continue payment, or tap ❌ Cancel to cancel.",
+        Markup.keyboard([
+          [Markup.button.webApp("💳 Pay Now", session.webAppUrl)],
+          ["❌ Cancel"],
+        ]).resize(),
       );
     }
 

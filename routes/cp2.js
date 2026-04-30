@@ -187,6 +187,7 @@ router.get("/webapp/bootstrap", async (req, res) => {
     const n = extractHiddenField(enetsHtml, "n");
     const netsTxnRef = extractHiddenField(enetsHtml, "netsTxnRef");
     const merchantTxnRef =
+      out.merchant_txn_ref ||
       extractHiddenField(enetsHtml, "merchant_txn_ref") ||
       extractMerchantTxnRef(enetsHtml);
     const rawActionUrl =
@@ -335,7 +336,11 @@ router.post(
 
         session.status = normalized.status;
         session.merchantTxnRef =
-          normalized.merchantTxnRef || req.body.merchantTxnRef || "";
+          normalized.merchantTxnRef ||
+          evsCb.id ||
+          req.body.merchantTxnRef ||
+          session.nets?.merchantTxnRef ||
+          "";
         session.reason = normalized.reason || "";
         session.completedAt = Date.now();
 
@@ -359,6 +364,7 @@ router.post(
             normalized.merchantTxnRef ||
             evsCb.id ||
             req.body.merchantTxnRef ||
+            session.nets?.merchantTxnRef ||
             "",
           meterId: meterId || normalized.meterId || "",
           address: address || "",
@@ -387,7 +393,10 @@ router.post(
 
       session.status = normalized.status;
       session.merchantTxnRef =
-        receipt.merchantTxnRef || req.body.merchantTxnRef || "";
+        receipt.merchantTxnRef ||
+        req.body.merchantTxnRef ||
+        session.nets?.merchantTxnRef ||
+        "";
       session.reason = normalized.reason || "";
       session.completedAt = Date.now();
 
@@ -611,7 +620,8 @@ router.post(
 
       if (session) {
         session.status = parsed.status || "unknown";
-        session.merchantTxnRef = parsed.merchantTxnRef || "";
+        session.merchantTxnRef =
+          parsed.merchantTxnRef || id || session.nets?.merchantTxnRef || "";
         session.reason = parsed.reason || "";
         session.completedAt = Date.now();
 

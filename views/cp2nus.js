@@ -495,12 +495,29 @@ function renderFinalResultPage(parsed, basePath = CP2NUS_BASE_PATH) {
   </div>
 
   <script>
+    const tg = window.Telegram?.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+
+  function closeMiniApp() {
+    if (tg) {
+      const payload = JSON.stringify({
+        status: ${safeJson(parsed.status)},
+        merchantTxnRef: ${safeJson(parsed.merchantTxnRef || "")},
+        meterId: ${safeJson(parsed.meterId || "")},
+        amount: ${safeJson(parsed.amount || "")},
+        address: ${safeJson(parsed.address || "")},
+        balance: ${safeJson(parsed.balance || "")},
+reason: ${safeJson(reason)},
+      });
+      tg.sendData(payload);
+    }
+  }
+
   document.getElementById('topUpAgainBtn').addEventListener('click', function() {
     window.location.href = this.dataset.url;
   });
-  document.getElementById('closeBtn').addEventListener('click', function() {
-    window.Telegram?.WebApp?.close();
-  });
+  document.getElementById('closeBtn').addEventListener('click', closeMiniApp);
+
 </script>
   </body>
   </html>`;

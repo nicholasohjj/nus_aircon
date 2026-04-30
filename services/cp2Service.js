@@ -271,6 +271,7 @@ async function runPurchaseFlow({ txtMtrId, txtAmount }) {
     step4Status: step4.status,
     step5Status: step5.status,
     step6Status: step6.status,
+    merchant_txn_ref,
     enetsBody: step6.data,
     enets: { netsMid, e, n, netsTxnRef },
   };

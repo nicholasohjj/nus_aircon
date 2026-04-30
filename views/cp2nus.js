@@ -102,7 +102,7 @@ function loadingPage(
       try {
         document.getElementById('statusText').textContent = 'Creating transaction…';
   
-        const resp = await fetch(BASE_PATH + '/webapp/bootstrap?txtMtrId=' + encodeURIComponent(METER_ID) +
+const resp = await fetch('${escHtml(basePath)}/webapp/bootstrap?txtMtrId=' + encodeURIComponent(METER_ID) +
           '&txtAmount=' + encodeURIComponent(TXN_AMOUNT)
         );
         const out = await resp.json().catch(() => ({}));
@@ -384,7 +384,7 @@ function cardPaymentPage({
   
         document.getElementById('btnLabel').textContent = 'Processing…';
   
-        const result = await fetch(BASE_PATH + '/webapp/enets_pay', {
+        const result = await fetch('${escHtml(basePath)}/webapp/enets_pay', {
           method:  'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body:    payload.toString(),
@@ -393,7 +393,7 @@ function cardPaymentPage({
         const out = await result.json().catch(() => ({}));
         if (!result.ok || !out.ok) throw new Error(out.error || 'Payment request failed');
         
-        window.location.href = BASE_PATH + '/webapp/result?token=' + encodeURIComponent(token);
+        window.location.href = '${escHtml(basePath)}/webapp/result?token=' + encodeURIComponent(token);
   
       } catch (err) {
         btn.disabled = false;

@@ -37,9 +37,7 @@ router.use(express.json());
 
 router.post("/purchase_flow", async (req, res) => {
   try {
-    console.log(req.body);
     const out = await runPurchaseFlow(req.body || {});
-    console.log("OUT: ", out);
     const status =
       out?.error &&
       (out.error.includes("Missing") || out.error.includes("Invalid"))
@@ -73,7 +71,6 @@ router.get("/purchase_flow/enets", async (req, res) => {
 router.get("/webapp/result", (req, res) => {
   const { token } = req.query;
 
-  // Token path (new)
   if (token) {
     const session = getPaymentSession(token);
     if (!session)
@@ -95,18 +92,7 @@ router.get("/webapp/result", (req, res) => {
       balance,
     } = session;
 
-    const eventName =
-      status === "success" ? "payment_completed" : "payment_failed";
-    track(eventName, {
-      meterId: txtMtrId,
-      amount: txtAmount,
-      status,
-      merchantTxnRef,
-      reason: reason || null,
-    });
-
     res.setHeader("Content-Type", "text/html; charset=UTF-8");
-
     return res.send(
       renderFinalResultPage({
         status,
@@ -290,6 +276,7 @@ router.post(
   "/webapp/enets_pay",
   express.urlencoded({ extended: false, limit: "10mb" }),
   async (req, res) => {
+    let meterId; // hoisted
     try {
       const { token } = req.body;
       const session = getPaymentSession(token);
@@ -299,12 +286,10 @@ router.post(
           .json({ ok: false, error: "Invalid or expired payment session." });
       }
 
-      const {
-        txtMtrId: meterId,
-        txtAmount: amount,
-        address,
-        balance,
-      } = session; // ← add this here
+      const { txtMtrId, txtAmount: amount, address, balance } = session;
+
+      meterId = txtMtrId;
+
       const body = new URLSearchParams(req.body).toString();
 
       track("payment_attempted", {
@@ -354,7 +339,11 @@ router.post(
         session.reason = normalized.reason || "";
         session.completedAt = Date.now();
 
-        track("payment_result", {
+        const eventName =
+          normalized.status === "success"
+            ? "payment_completed"
+            : "payment_failed";
+        track(eventName, {
           meterId,
           amount,
           merchantTxnRef: normalized.merchantTxnRef || "",
@@ -394,13 +383,25 @@ router.post(
         });
       }
 
-      const normalized = normalizeFinalOutcome(receipt); // add this
+      const normalized = normalizeFinalOutcome(receipt);
 
       session.status = normalized.status;
       session.merchantTxnRef =
         receipt.merchantTxnRef || req.body.merchantTxnRef || "";
       session.reason = normalized.reason || "";
       session.completedAt = Date.now();
+
+      const eventName =
+        normalized.status === "success"
+          ? "payment_completed"
+          : "payment_failed";
+      track(eventName, {
+        meterId,
+        amount,
+        merchantTxnRef: session.merchantTxnRef,
+        status: normalized.status,
+        reason: normalized.reason || "",
+      });
 
       return res.status(200).json({
         ok: true,
@@ -414,10 +415,11 @@ router.post(
         reason: normalized.reason || "",
       });
     } catch (err) {
-      return res.status(500).json({
-        ok: false,
-        error: err.message,
+      captureException(err, String(meterId || "anonymous"), {
+        route: "cp2",
+        endpoint: "/webapp/enets_pay",
       });
+      return res.status(500).json({ ok: false, error: err.message });
     }
   },
 );
@@ -577,9 +579,9 @@ router.post(
   "/webapp/transsum",
   express.urlencoded({ extended: false }),
   async (req, res) => {
+    const { status = "0", id, token } = req.query; // single destructure, outside try
+    const { message } = req.body || {};
     try {
-      const { status = "0", id, token } = req.query;
-      const { message } = req.body || {};
       if (!message || !id) {
         return res
           .status(400)
@@ -612,6 +614,17 @@ router.post(
         session.merchantTxnRef = parsed.merchantTxnRef || "";
         session.reason = parsed.reason || "";
         session.completedAt = Date.now();
+
+        const eventName =
+          session.status === "success" ? "payment_completed" : "payment_failed";
+        track(eventName, {
+          meterId: session.txtMtrId,
+          amount: session.txtAmount,
+          status: session.status,
+          merchantTxnRef: session.merchantTxnRef,
+          reason: session.reason || null,
+        });
+
         return res.redirect(`/webapp/result?token=${token}`);
       }
 
@@ -627,6 +640,10 @@ router.post(
 
       return res.redirect(`/webapp/result?${q}`);
     } catch (err) {
+      captureException(err, String(id || "anonymous"), {
+        route: "cp2",
+        endpoint: "/webapp/transsum",
+      });
       return res
         .status(500)
         .send(

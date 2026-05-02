@@ -50,21 +50,24 @@ note over Backend #LightYellow: step: callTxnReqListener()
 Backend -> NETS: POST /GW2/TxnReqListener\n(txnReq JSON)\nHeaders: Hmac, Keyid
 NETS --> Backend: msg: { rsaModulus, rsaExponent,\nnetsTxnRef, netsMid (UMID_xxx),\npaymtNetsMid (acquiring MID),\nmerchantTxnRef, txnRand,\nrouteTo, keyId (apiKey), hmac }
 
-Backend --> WebApp: JSON { ok, redirectUrl: "/webapp/pay?..." }
+note over Backend: createPaymentSession()\nstores { txtMtrId, txtAmount, address, balance,\nnets: { rsaModulus, rsaExponent, netsTxnRef,\nnetsMid, paymtNetsMid, merchantTxnRef,\ntxnRand, keyId, hmac }, status: "pending" }\nreturns opaque token
 
-note over WebApp: All NETS fields passed as query params:\nn, e, netsMid, netsTxnRef, merchantTxnRef,\npaymtNetsMid, txnRand, keyId, hmac
+Backend --> WebApp: JSON { ok, redirectUrl: "/cp2nus/webapp/pay?token=<token>" }
 
 == Card entry ==
-note over WebApp: Client-side: window.location.href = redirectUrl
-WebApp -> Backend: GET /webapp/pay?n&e&netsMid&netsTxnRef\n&txnRand&keyId&hmac&paymtNetsMid&...
+note over WebApp: Client-side redirect\nwindow.location.href = redirectUrl
+WebApp -> Backend: GET /webapp/pay?token=<token>
+note over Backend: getPaymentSession(token)\nreads all NETS fields from session\npaymtNetsMid passed as netsMid to card page
 Backend --> WebApp: Card payment page\n(loads eNETS RSA scripts from www.enets.sg)
 
 User -> WebApp: Enter name, email, card no., exp MM/YY, CVV
-note over WebApp: RSA encrypt (cardNo + cvv)\nusing n/e from TxnReqListener\nexpiryYear sent as 4-digit ("20" + YY)
+note over WebApp: RSA encrypt (cardNo + cvv)\nusing rsaModulus/rsaExponent from session\nexpiryYear sent as 4-digit ("20" + YY)
 
-WebApp -> Backend: POST /webapp/enets_pay\n(enc, netsMid, netsTxnRef, merchantTxnRef,\ntxnRand, keyId, hmac, name, expiryMonth,\nexpiryYear, consumerEmail, browserInfo...\nmeterId, address, balance, amount)
+WebApp -> Backend: POST /webapp/enets_pay\n(enc, netsMid=paymtNetsMid, netsTxnRef,\nmerchantTxnRef, txnRand, keyId, hmac,\nname, expiryMonth, expiryYear, consumerEmail,\nbrowserInfo..., token)
 
 == Payment processing ==
+note over Backend: getPaymentSession(token)\nreads meterId, amount, address, balance
+
 note over Backend: step 4a: fetchEnvJsp() — seed JSESSIONID
 Backend -> NETS: GET /GW2/pluginpages/env.jsp
 NETS --> Backend: Set-Cookie: JSESSIONID (env session)
@@ -73,26 +76,26 @@ note over Backend: step 4b: callCreditInit() — establish credit session
 Backend -> NETS: POST /GW2/credit/init;jsessionid=...\n(txnRand, paymentMode=CC_1, routeTo=FEH)
 NETS --> Backend: Set-Cookie: JSESSIONID (credit session)
 
-note over Backend: step 4c: submitPanForm()
-note over Backend: netsMid used here = paymtNetsMid\n(acquiring MID from paymtSvcInfoList[0]),\nnot the top-level UMID_xxx
+note over Backend: step 4c: submitPanForm()\nnetsMid used here = paymtNetsMid\n(acquiring MID from paymtSvcInfoList[0]),\nnot the top-level UMID_xxx
 Backend -> NETS: POST /GW2/credit/panSubmitForm\n(enc, netsMid=paymtNetsMid, txnRand,\nname, expiryMonth, expiryYear (4-digit),\nconsumerEmail, browserInfo, ...)
 NETS --> Backend: HTML: message (JSON), hmac, KeyId,\npost_form action URL
 
 == Result path ==
 alt netsTxnStatus resolved in panSubmitForm message
-    note over Backend: preParsed: parse message JSON\nnetsTxnStatus "0" = success,\n"1" or ss="0" = failure
+    note over Backend: preParsed: parse message JSON\nnetsTxnStatus "0" = success,\n"1" or ss="0" = failure\nupdate session: { status, merchantTxnRef }
     Backend --> WebApp: JSON { ok, status, reason,\nmerchantTxnRef, source: "pan_result" }
 
 else POST to b2s (action URL from post_form)
     Backend -> EVS: POST /enets/b2s (or action URL)\n(message, hmac, KeyId)
     EVS --> Backend: 303 redirect →\n/pay_result?r=&t=&a=&x=&s=&m=\n(all base64-encoded)
-    note over Backend: parsePayResult()\nbase64-decode r(result), t(meterId),\na(amount), x(txnRef), s(stageCode),\nm(message)\nFallback: HTML scrape if URL parse fails
+    note over Backend: parsePayResult()\nbase64-decode r(result), t(meterId),\na(amount), x(txnRef), s(stageCode),\nm(message)\nFallback: HTML scrape if URL parse fails\nupdate session: { status, merchantTxnRef }
     Backend --> WebApp: JSON { ok, status, merchantTxnRef,\nmeterId, amount, reason,\nsource: "pay_result" }
 end
 
 == Final UI ==
-note over WebApp: Client-side: window.location.href = /webapp/result?...
-WebApp -> Backend: GET /webapp/result?status&ref&meterId\n&amount&reason&address&balance
+note over WebApp: Client-side redirect\nwindow.location.href = "/cp2nus/webapp/result?token=<token>"
+WebApp -> Backend: GET /webapp/result?token=<token>
+note over Backend: getPaymentSession(token)\nreads status, merchantTxnRef, meterId,\namount, reason, address, balance
 Backend --> WebApp: renderFinalResultPage()
 
 alt success

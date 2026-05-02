@@ -1,11 +1,11 @@
 @startuml
-title EVS Electricity Top-Up Flow
+title EVS cp2 Electricity Top-Up Flow
 
 actor User
 participant "Telegram Bot\n(bot.js)" as Bot
 participant "WebApp UI\n/webapp" as WebApp
-participant "Express Backend\n(server.js)" as Backend
-participant "EVS POS\nevs.com.sg" as EVS
+participant "Express Backend\n(cp2 router)" as Backend
+participant "EVS WebPOS\ncp2.evs.com.sg" as EVS
 participant "Credit Payment JSP\n120.50.44.233" as CreditJSP
 participant "eNETS PaymentListener\nwww.enets.sg" as ENETSListener
 participant "eNETS Card Payment\n/GW2/uCredit/pay" as ENETSPay
@@ -14,7 +14,7 @@ participant "ORE API\nore.evs.com.sg" as ORE
 == Telegram bot flow ==
 User -> Bot: /topup
 Bot -> User: Ask hostel selection
-User -> Bot: Select hostel
+User -> Bot: Select hostel (cp2)
 Bot -> User: Ask 8-digit Meter ID
 User -> Bot: Submit meter ID
 Bot -> User: Ask amount ($6–$50)
@@ -58,35 +58,43 @@ else getMeterSummary (parallel)
   ORE --> Backend: { address, credit_bal }
 end
 
-Backend --> WebApp: JSON { ok, redirectUrl: "/webapp/pay?...params..." }
+note over Backend: createPaymentSession()\nstores { txtMtrId, txtAmount, address, balance,\nnets: { n, e, netsMid, netsTxnRef,\nmerchantTxnRef, actionUrl }, status: "pending" }\nreturns opaque token
+
+Backend --> WebApp: JSON { ok, redirectUrl: "/webapp/pay?token=<token>" }
 
 == Card entry ==
 note over WebApp: Client-side redirect\nwindow.location.href = redirectUrl
-WebApp -> Backend: GET /webapp/pay?n&e&netsMid&netsTxnRef\n&merchantTxnRef&txtMtrId&txtAmount\n&address&balance&actionUrl
-Backend --> WebApp: Custom card payment page\n(loads eNETS RSA scripts from enets.sg)
+WebApp -> Backend: GET /webapp/pay?token=<token>
+note over Backend: getPaymentSession(token)\nreads all NETS fields from session
+Backend --> WebApp: Card payment page\n(loads eNETS RSA scripts from enets.sg)
 
 User -> WebApp: Enter name, email, card no., exp MM/YY, CVV
-note over WebApp: RSA encrypt (cardNo + cvv)\nusing n/e from eNETS\nvia jsbn/rsa.js from enets.sg
+note over WebApp: RSA encrypt (cardNo + cvv)\nusing n/e from session\nvia jsbn/rsa.js from enets.sg
 
-WebApp -> Backend: POST /webapp/enets_pay\n(enc, netsMid, netsTxnRef, merchantTxnRef,\nmeterId, amount, address, balance, ...)
+WebApp -> Backend: POST /webapp/enets_pay\n(enc, netsMid, netsTxnRef, merchantTxnRef,\nname, expiryMonth, expiryYear, consumerEmail,\nbrowserInfo..., token)
+note over Backend: getPaymentSession(token)\nreads meterId, amount, address, balance
 Backend -> ENETSPay: POST https://www.enets.sg/GW2/uCredit/pay
 ENETSPay --> Backend: HTML response
 
 == Result path ==
 alt EVS callback form found in eNETS HTML
     note over Backend: extractEvsCallbackFromHtml()\nextracts action, status, id, message
+
     Backend -> EVS: POST /EVSWebPOS/transSumServlet?status=...&id=...\n(message)
     EVS --> Backend: Final EVS transaction summary HTML
-    note over Backend: parseEvsTransactionSummary()\nnormalizeFinalOutcome()
-    Backend --> WebApp: JSON { ok, status, reason,\nmerchantTxnRef, meterId, amount,\naddress, balance }
+
+    note over Backend: parseEvsTransactionSummary()\nnormalizeFinalOutcome()\nupdate session: { status, merchantTxnRef, reason }
+    Backend --> WebApp: JSON { ok, status, reason,\nmerchantTxnRef, meterId, amount,\naddress, balance, source: "evs_transsum" }
+
 else fallback receipt parser
-    note over Backend: parseEnetsResult()
-    Backend --> WebApp: JSON { ok, status, merchantTxnRef,\namount, reason }
+    note over Backend: parseEnetsResult()\nnormalizeFinalOutcome()\nupdate session: { status, merchantTxnRef, reason }
+    Backend --> WebApp: JSON { ok, status, merchantTxnRef,\namount, reason, source: "enets_receipt_fallback" }
 end
 
 == Final UI ==
-note over WebApp: Client-side redirect\nwindow.location.href = "/webapp/result?" + query
-WebApp -> Backend: GET /webapp/result?status&ref&meterId\n&amount&reason&address&balance
+note over WebApp: Client-side redirect\nwindow.location.href = "/webapp/result?token=<token>"
+WebApp -> Backend: GET /webapp/result?token=<token>
+note over Backend: getPaymentSession(token)\nreads status, merchantTxnRef, meterId,\namount, reason, address, balance
 Backend --> WebApp: renderFinalResultPage()
 
 alt success

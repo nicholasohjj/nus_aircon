@@ -31,7 +31,7 @@ You may use the Bot only if you:
 
 **No refunds** are guaranteed through this Bot. Once a top-up is successfully submitted to the EVS system, it cannot be reversed through this service. For disputes, contact EVS or your card issuer directly.
 
-**Failed transactions.** If a payment is declined or the process fails partway through, no charge should be applied. However, in the event of a technical failure mid-flow, you should verify with your card issuer and EVS before retrying.
+**Failed transactions.** If a payment is declined or the process fails partway through, a charge is generally not applied. However, some card issuers may place a temporary pre-authorisation hold even when a transaction does not complete. In the event of any technical failure mid-flow, verify the outcome with your card issuer and EVS before retrying.
 
 **Top-up not reflected on meter.** If your payment is confirmed by your card issuer but the top-up does not appear on your meter, the Bot operator has no ability to investigate or resolve this. You must contact EVS directly with your transaction reference number. Do not retry the payment until the original transaction has been clarified, to avoid being charged twice.
 
@@ -56,12 +56,19 @@ You are responsible for entering the correct 8-digit meter ID. Topping up the wr
 ## 6. Session and Data Handling
 
 - Bot sessions are stored **in memory only** and expire after 15 minutes of inactivity. No conversation history or meter IDs are persisted to disk.
+- To support feedback replies (see below), message routing information is held in memory for up to **7 days** after a feedback submission. This consists only of Telegram message and chat identifiers; no message content is retained beyond what Telegram itself stores.
 - Basic analytics events and error details are captured to maintain service quality. These do not include your card details.
-- By submitting feedback via `/feedback`, you consent to your message being forwarded to the Bot operator.
+- By submitting feedback via `/feedback`, you consent to your message being forwarded to the Bot operator and to receiving a reply from the Bot operator through the Bot.
 
 ---
 
-## 7. Availability and Accuracy
+## 7. Operator Communication
+
+When you submit feedback, the Bot operator may reply to you directly through the Bot. These replies are sent via Telegram and will appear as messages from the Bot. You may also reply to those messages and your reply will be forwarded to the operator. This two-way exchange is limited to feedback threads and is not used for any other purpose.
+
+---
+
+## 8. Availability and Accuracy
 
 The Bot depends on third-party systems (EVS WebPOS, EVS JSON API, eNETS) that may change or become unavailable without notice. We do not guarantee uninterrupted service, accurate balance data, or successful payment processing at any given time.
 
@@ -69,7 +76,7 @@ Balance and usage figures displayed are fetched from the ORE API and may not ref
 
 ---
 
-## 8. Prohibited Use
+## 9. Prohibited Use
 
 You must not:
 
@@ -80,24 +87,24 @@ You must not:
 
 ---
 
-## 9. Disclaimer of Warranties
+## 10. Disclaimer of Warranties
 
 The Bot is provided **"as is"** without warranties of any kind, express or implied. We do not warrant that the Bot will be error-free, that payments will succeed, or that meter balances displayed will be accurate.
 
 ---
 
-## 10. Limitation of Liability
+## 11. Limitation of Liability
 
 To the fullest extent permitted by law, the Bot operator shall not be liable for any direct, indirect, incidental, or consequential loss arising from your use of the Bot, including but not limited to failed or duplicate payments, incorrect meter top-ups, or third-party system errors.
 
 ---
 
-## 11. Changes to These Terms
+## 12. Changes to These Terms
 
 These Terms may be updated at any time. Continued use of the Bot after changes constitutes acceptance of the revised Terms.
 
 ---
 
-## 12. Contact
+## 13. Contact
 
 For issues, disputes, or feedback, use the `/feedback` command within the Bot.

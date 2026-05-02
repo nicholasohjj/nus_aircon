@@ -97,7 +97,7 @@ Create a `.env` file:
 ```env
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 SERVER_URL=https://your-public-server.example.com
-OWNER_CHAT_ID=your_telegram_chat_id   # receives feedback notifications
+OWNER_CHAT_ID=your_telegram_chat_id   # receives feedback notifications; enables owner reply feature
 ```
 
 `SERVER_URL` must be HTTPS for the Telegram WebApp payment button to work. If it is HTTP, the bot falls back to sending a plain browser link instead.
@@ -123,17 +123,22 @@ node server.js   # Express web server
 
 ## Bot Session Flow
 
-Sessions are stored in-memory with a **15-minute TTL** and an `inFlight` guard to prevent duplicate requests. The top-up flow stages are:
+Sessions are stored in-memory with a **15-minute TTL**. All incoming text messages for a given chat are serialized through a per-chat `withChatLock` promise chain to prevent race conditions from rapid input. The top-up flow stages are:
 
 ```
 idle
   → awaiting_hostel      (hostel keyboard: cp2 / cp2nus)
   → awaiting_meter_id    (8-digit meter ID + prefetch balance & 7-day usage)
   → awaiting_amount      ($6–$50 SGD)
-  → idle                 (WebApp button shown)
+  → awaiting_payment     (WebApp Pay button shown; re-prompts if user sends text)
+  → idle                 (reset after WebApp closes via web_app_data)
 ```
 
 The `/balance` and `/usage` commands use their own single-step stages (`awaiting_meter_id_balance`, `awaiting_meter_id_usage`) that return to idle after one response. The `/feedback` command uses `awaiting_feedback_rating` → `awaiting_feedback_text`, then notifies `OWNER_CHAT_ID`.
+
+## Owner Reply Threading
+
+When a user submits feedback, the bot forwards a notification to `OWNER_CHAT_ID`. The owner can reply directly to that notification message in Telegram and the bot will forward the reply to the original user. The user can then reply back to the bot's forwarded message, creating a two-way thread — all routed via the in-memory `pendingReplies` map (7-day TTL).
 
 ## Project Structure
 

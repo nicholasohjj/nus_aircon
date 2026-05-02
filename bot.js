@@ -166,7 +166,8 @@ function helpText() {
     `*Useful commands*\n` +
     `• /topup — start a new top-up\n` +
     `• /balance — check meter balance\n` +
-    `• /usage — show recent daily usage\n` +
+    `• /usage — show last 7 days of daily consumption,\n` +
+    `  estimated days remaining, and current balance\n` +
     `• /feedback — share feedback or report an issue\n` +
     `• /cancel — cancel the current flow\n` +
     `• /help — show this message`
@@ -249,23 +250,48 @@ bot.start(async (ctx) => {
   track("bot_start", { chatId });
   if (chatId) resetSession(chatId);
 
-  const meterId = ctx.startPayload?.trim();
+  const payload = ctx.startPayload?.trim() ?? "";
 
-  if (meterId && isValidMeterId(meterId)) {
-    track("bot_start_deeplink", { chatId, meterId });
+  const cp2nusMatch = payload.match(/^nus_(\d{8})$/);
+  if (cp2nusMatch) {
+    const meterId = cp2nusMatch[1];
+    track("bot_start_deeplink", { chatId, meterId, hostel: "cp2nus" });
 
     const session = getSession(chatId);
-    session.stage = "awaiting_hostel";
+    session.stage = "awaiting_amount";
+    session.hostel = HOSTELS.CP2NUS;
     session.txtMtrId = meterId;
 
     return ctx.reply(
-      `⚡ EVS Electricity Top-Up\n\nPlease select your hostel:\n\n📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
+      `⚡ EVS Electricity Top-Up\n\n` +
+        `🏠 Hostel: <b>UTown Residence / RVRC (cp2nus)</b>\n` +
+        `🔌 Meter ID: <code>${meterId}</code>\n\n` +
+        `Enter the amount in SGD (e.g. <code>20</code>, min $6, max $50):\n\n` +
+        `📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
+      {
+        parse_mode: "HTML",
+        reply_markup: Markup.keyboard([["❌ Cancel"]]).resize().reply_markup,
+      },
+    );
+  }
+
+  if (isValidMeterId(payload)) {
+    track("bot_start_deeplink", { chatId, meterId: payload });
+
+    const session = getSession(chatId);
+    session.stage = "awaiting_hostel";
+    session.txtMtrId = payload;
+
+    return ctx.reply(
+      `⚡ EVS Electricity Top-Up\n\nPlease select your hostel:\n\n` +
+        `📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
       { parse_mode: "HTML", reply_markup: hostelInlineKeyboard.reply_markup },
     );
   }
 
   return ctx.reply(
-    `⚡ EVS Electricity Top-Up\n\nChoose an option below:\n\n📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
+    `⚡ EVS Electricity Top-Up\n\nChoose an option below:\n\n` +
+      `📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
     { parse_mode: "HTML", reply_markup: mainKeyboard.reply_markup },
   );
 });
@@ -897,7 +923,11 @@ bot.on("text", async (ctx) => {
       const replyToId = ctx.message?.reply_to_message?.message_id;
       if (replyToId && pendingReplies.has(replyToId)) {
         const pending = pendingReplies.get(replyToId);
-        if (pending && pending.ownerMsgId) {
+        if (
+          pending &&
+          String(pending.chatId) === String(chatId) &&
+          pending.ownerMsgId
+        ) {
           // Send back to owner, threading onto the original notification
           const sentOwnerMsg = await bot.telegram
             .sendMessage(
@@ -926,8 +956,19 @@ bot.on("text", async (ctx) => {
       }
     }
 
+    const looksLikeMeterId = /^\d{8}$/.test(text);
+    const looksLikeAmount =
+      /^\d+(\.\d{1,2})?$/.test(text) && Number(text) >= 6 && Number(text) <= 50;
+
+    if (looksLikeMeterId || looksLikeAmount) {
+      return ctx.reply(
+        "⚠️ It looks like your previous session may have expired.\n\nUse /topup to start a new top-up, or /help for available commands.",
+        mainKeyboard,
+      );
+    }
+
     return ctx.reply(
-      "I didn’t understand that. Use /topup to top up, /balance to check balance, or /help for instructions.",
+      "I didn't understand that. Use /topup to top up, /balance to check balance, or /help for instructions.",
       mainKeyboard,
     );
   });

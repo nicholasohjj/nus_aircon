@@ -474,19 +474,33 @@ bot.on("message", async (ctx, next) => {
   const replyText = ctx.message?.text;
   if (!replyText) return ctx.reply("⚠️ Only text replies are supported.");
 
-  await bot.telegram
+  // Figure out which owner message to thread future user replies back to.
+  // If this entry is the root notification, that's the ownerMsgId.
+  // If it's a forwarded user reply, follow ownerMsgId back to the root.
+  const rootOwnerMsgId = pending.ownerMsgId ?? replyToId;
+
+  const sentMsg = await bot.telegram
     .sendMessage(
       targetChatId,
       `💬 <b>Message from the developer:</b>\n\n${escHtml(replyText)}`,
       { parse_mode: "HTML" },
     )
-    .then(() => {
-      pendingReplies.delete(replyToId);
-      return ctx.reply("✅ Reply sent to user.");
-    })
-    .catch(() =>
-      ctx.reply("⚠️ Failed to send reply — user may have blocked the bot."),
+    .catch(() => null);
+
+  if (!sentMsg) {
+    return ctx.reply(
+      "⚠️ Failed to send reply — user may have blocked the bot.",
     );
+  }
+
+  // Map the bot's new message ID → back to owner's root thread message
+  pendingReplies.set(sentMsg.message_id, {
+    chatId: targetChatId,
+    ownerMsgId: rootOwnerMsgId,
+    createdAt: Date.now(),
+  });
+
+  return ctx.reply("✅ Reply sent to user.");
 });
 
 bot.on("text", async (ctx) => {
@@ -563,6 +577,7 @@ bot.on("text", async (ctx) => {
         if (notifyMsg) {
           pendingReplies.set(notifyMsg.message_id, {
             chatId,
+            ownerMsgId: null,
             createdAt: Date.now(),
           });
         }
@@ -873,6 +888,41 @@ bot.on("text", async (ctx) => {
           );
 
         return ctx.reply("Choose an option:", mainKeyboard);
+      }
+    }
+
+    // Inside withChatLock, before the final fallback reply:
+    if (session.stage === "idle") {
+      // Check if this message is a reply to a bot message that's part of a thread
+      const replyToId = ctx.message?.reply_to_message?.message_id;
+      if (replyToId && pendingReplies.has(replyToId)) {
+        const pending = pendingReplies.get(replyToId);
+        if (pending && pending.ownerMsgId) {
+          // Send back to owner, threading onto the original notification
+          const sentOwnerMsg = await bot.telegram
+            .sendMessage(
+              OWNER_CHAT_ID,
+              `↩️ <b>User reply:</b>\n\n${escHtml(text)}`,
+              {
+                parse_mode: "HTML",
+                reply_to_message_id: pending.ownerMsgId,
+              },
+            )
+            .catch(() => null);
+
+          if (!sentOwnerMsg) {
+            return ctx.reply("⚠️ Could not forward your reply.");
+          }
+
+          // Update entry so owner can reply to this new message too
+          pendingReplies.set(sentOwnerMsg.message_id, {
+            chatId,
+            ownerMsgId: pending.ownerMsgId,
+            createdAt: Date.now(),
+          });
+
+          return ctx.reply("✅ Your reply was sent.");
+        }
       }
     }
 

@@ -1,5 +1,8 @@
 const axios = require("axios");
 const { ORE_HEADERS } = require("./config");
+
+const AXIOS_TIMEOUT_MS = 10_000; // 10 s — prevents hung handlers blocking the chat lock
+
 function toIsoRange(days = 7) {
   const end = new Date();
   const start = new Date(end.getTime() - days * 24 * 60 * 60 * 1000);
@@ -23,6 +26,7 @@ async function getMeterInfo(meterDisplayName) {
     {
       headers: ORE_HEADERS,
       validateStatus: () => true,
+      timeout: AXIOS_TIMEOUT_MS,
     },
   );
 
@@ -44,6 +48,7 @@ async function getCreditBalance(meterDisplayName) {
     {
       headers: ORE_HEADERS,
       validateStatus: () => true,
+      timeout: AXIOS_TIMEOUT_MS,
     },
   );
 
@@ -95,6 +100,7 @@ async function getMeterUsage(meterDisplayName, days = 7) {
     {
       headers: ORE_HEADERS,
       validateStatus: () => true,
+      timeout: AXIOS_TIMEOUT_MS,
     },
   );
 
@@ -132,7 +138,11 @@ async function getRecentUsageStat(meterDisplayName, lookBackHours = 168) {
         convert_to_money: true,
       },
     },
-    { headers: ORE_HEADERS, validateStatus: () => true },
+    {
+      headers: ORE_HEADERS,
+      validateStatus: () => true,
+      timeout: AXIOS_TIMEOUT_MS,
+    },
   );
 
   if (resp.status !== 200) return null;
@@ -160,7 +170,11 @@ async function getMonthToDateUsage(meterDisplayName) {
         convert_to_money: "true",
       },
     },
-    { headers: ORE_HEADERS, validateStatus: () => true },
+    {
+      headers: ORE_HEADERS,
+      validateStatus: () => true,
+      timeout: AXIOS_TIMEOUT_MS,
+    },
   );
 
   if (resp.status !== 200) return null;

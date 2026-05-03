@@ -8,6 +8,7 @@ const pendingReplies = new Map();
 const PENDING_REPLY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const chatLocks = new Map();
+const chatWaiters = new Map(); // chatId -> number (active + queued count)
 
 const hostelInlineKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback("🏠 PGPR / PGP / RC / NUSC (cp2)", "hostel_cp2")],
@@ -25,7 +26,8 @@ const mainKeyboard = Markup.keyboard([
   ["ℹ️ Help"],
 ]).resize();
 
-console.log("🚀 SERVER_URL =", SERVER_URL);
+const cancelKeyboard = Markup.keyboard([["❌ Cancel"]]).resize();
+
 if (!TOKEN) throw new Error("TELEGRAM_BOT_TOKEN env var is required");
 const {
   getMeterSummary,
@@ -85,31 +87,41 @@ function getSession(chatId) {
   const s = sessions[chatId];
 
   if (!s || (s.updatedAt && now - s.updatedAt > SESSION_TTL_MS)) {
+    // Reassign rather than mutate so expired sessions are fully replaced.
+    // Always return sessions[chatId] — not the local `s` — so callers
+    // never receive a stale reference to the old object.
     sessions[chatId] = { stage: "idle", updatedAt: now };
   } else {
     sessions[chatId].updatedAt = now;
   }
 
-  return sessions[chatId];
+  return sessions[chatId]; // always the current, live object
 }
 
 async function withChatLock(chatId, fn) {
+  chatWaiters.set(chatId, (chatWaiters.get(chatId) ?? 0) + 1);
+
   // Chain onto the existing lock for this chat, or resolve immediately
   const prev = chatLocks.get(chatId) ?? Promise.resolve();
   let release;
   const next = new Promise((res) => (release = res));
-  chatLocks.set(
-    chatId,
-    prev.then(() => next),
-  );
+  const chain = prev.then(() => next);
+  chatLocks.set(chatId, chain);
 
   try {
     await prev; // wait for previous handler to finish
     return await fn();
   } finally {
     release(); // unblock the next handler
-    // Clean up if no more waiters
-    if (chatLocks.get(chatId) === next) chatLocks.delete(chatId);
+
+    // Decrement and clean up both maps if nobody is left waiting
+    const remaining = (chatWaiters.get(chatId) ?? 1) - 1;
+    if (remaining <= 0) {
+      chatWaiters.delete(chatId);
+      chatLocks.delete(chatId);
+    } else {
+      chatWaiters.set(chatId, remaining);
+    }
   }
 }
 
@@ -200,7 +212,7 @@ bot.hears("💰 Balance", async (ctx) => {
 
   return ctx.reply(
     "🔌 Please enter your 8-digit Meter ID to check your balance:",
-    Markup.keyboard([["❌ Cancel"]]).resize(),
+    cancelKeyboard,
   );
 });
 
@@ -215,7 +227,7 @@ bot.hears("📊 Usage", async (ctx) => {
 
   return ctx.reply(
     "🔌 Please enter your 8-digit Meter ID to view the last 7 days of usage:",
-    Markup.keyboard([["❌ Cancel"]]).resize(),
+    cancelKeyboard,
   );
 });
 
@@ -270,7 +282,7 @@ bot.start(async (ctx) => {
         `📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
       {
         parse_mode: "HTML",
-        reply_markup: Markup.keyboard([["❌ Cancel"]]).resize().reply_markup,
+        reply_markup: cancelKeyboard.reply_markup,
       },
     );
   }
@@ -307,7 +319,7 @@ bot.command("balance", async (ctx) => {
 
   return ctx.reply(
     "🔌 Please enter your 8-digit Meter ID to check your balance:",
-    Markup.keyboard([["❌ Cancel"]]).resize(),
+    cancelKeyboard,
   );
 });
 
@@ -322,7 +334,7 @@ bot.command("usage", async (ctx) => {
 
   return ctx.reply(
     "🔌 Please enter your 8-digit Meter ID to view the last 7 days of usage:",
-    Markup.keyboard([["❌ Cancel"]]).resize(),
+    cancelKeyboard,
   );
 });
 
@@ -332,7 +344,7 @@ bot.command("topup", async (ctx) => {
   if (!chatId) return;
 
   startTopUp(chatId);
-  return ctx.reply("🏠 Please select your hostel:", hostelInlineKeyboard); // ← fix
+  return ctx.reply("🏠 Please select your hostel:", hostelInlineKeyboard);
 });
 
 bot.command("feedback", async (ctx) => {
@@ -388,15 +400,12 @@ bot.action("hostel_cp2", async (ctx) => {
     session.stage = "awaiting_amount";
     return ctx.replyWithMarkdown(
       `🔌 Meter ID: \`${session.txtMtrId}\`\n\nEnter the *amount in SGD* (e.g. \`20\`, min $6, max $50):`,
-      Markup.keyboard([["❌ Cancel"]]).resize(),
+      cancelKeyboard,
     );
   }
 
   session.stage = "awaiting_meter_id";
-  return ctx.reply(
-    "🔌 Please enter your 8-digit Meter ID:",
-    Markup.keyboard([["❌ Cancel"]]).resize(),
-  );
+  return ctx.reply("🔌 Please enter your 8-digit Meter ID:", cancelKeyboard);
 });
 
 bot.action("hostel_cp2nus", async (ctx) => {
@@ -416,15 +425,12 @@ bot.action("hostel_cp2nus", async (ctx) => {
     session.stage = "awaiting_amount";
     return ctx.replyWithMarkdown(
       `🔌 Meter ID: \`${session.txtMtrId}\`\n\nEnter the *amount in SGD* (e.g. \`20\`, min $6, max $50):`,
-      Markup.keyboard([["❌ Cancel"]]).resize(),
+      cancelKeyboard,
     );
   }
 
   session.stage = "awaiting_meter_id";
-  return ctx.reply(
-    "🔌 Please enter your 8-digit Meter ID:",
-    Markup.keyboard([["❌ Cancel"]]).resize(),
-  );
+  return ctx.reply("🔌 Please enter your 8-digit Meter ID:", cancelKeyboard);
 });
 
 bot.on("web_app_data", async (ctx) => {
@@ -589,6 +595,10 @@ bot.on("text", async (ctx) => {
       if (feedbackText)
         notifyLines.push(`💬 Message: <i>${escHtml(feedbackText)}</i>`);
 
+      // INVARIANT: both the sendMessage and the pendingReplies.set must stay
+      // inside this OWNER_CHAT_ID guard. If pendingReplies.set moves outside,
+      // a successful send to an undefined target would register a reply thread
+      // that can never be resolved.
       if (OWNER_CHAT_ID) {
         const notifyMsg = await bot.telegram
           .sendMessage(OWNER_CHAT_ID, notifyLines.join("\n"), {
@@ -599,7 +609,7 @@ bot.on("text", async (ctx) => {
             return null;
           });
 
-        // store mapping: notification message_id -> original user's chatId
+        // Must remain inside the OWNER_CHAT_ID guard — see invariant above.
         if (notifyMsg) {
           pendingReplies.set(notifyMsg.message_id, {
             chatId,
@@ -618,7 +628,10 @@ bot.on("text", async (ctx) => {
 
     if (session.stage === "awaiting_meter_id") {
       if (!isValidMeterId(text)) {
-        return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
+        return ctx.reply(
+          "⚠️ Invalid Meter ID. Please try again.",
+          cancelKeyboard,
+        );
       }
 
       session.txtMtrId = text;
@@ -672,30 +685,46 @@ bot.on("text", async (ctx) => {
             lines.join("\n"),
             { parse_mode: "HTML" },
           )
-          .catch(() => ctx.reply(lines.join("\n"), { parse_mode: "HTML" }));
+          .catch(async () => {
+            await ctx.reply(lines.join("\n"), {
+              parse_mode: "HTML",
+              ...cancelKeyboard,
+            });
+            return null;
+          });
       } catch (err) {
+        const timedOut = err.code === "ECONNABORTED";
+
         track("prefill_usage_error", {
           chatId,
           meterId: text,
           error: err.message,
+          timedOut,
         });
         session.stage = "awaiting_meter_id";
         delete session.txtMtrId;
 
-        const fallback = `⚠️ Meter ID <code>${text}</code> could not be found. Please check and try again:`;
+        const fallback = timedOut
+          ? `⚠️ The EVS server took too long to respond. Please try again in a moment:`
+          : `⚠️ Meter ID <code>${text}</code> could not be found. Please check and try again:`;
 
         await ctx.telegram
           .editMessageText(chatId, loadingMsg.message_id, undefined, fallback, {
             parse_mode: "HTML",
           })
-          .catch(() => ctx.reply(fallback, { parse_mode: "HTML" }));
+          .catch(() =>
+            ctx.reply(fallback, { parse_mode: "HTML", ...cancelKeyboard }),
+          );
       }
       return;
     }
 
     if (session.stage === "awaiting_meter_id_usage") {
       if (!isValidMeterId(text)) {
-        return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
+        return ctx.reply(
+          "⚠️ Invalid Meter ID. Please try again.",
+          cancelKeyboard,
+        );
       }
 
       session.stage = "idle";
@@ -730,7 +759,7 @@ bot.on("text", async (ctx) => {
           )) || "No usage data available.",
         );
 
-        await ctx.telegram
+        const edited = await ctx.telegram
           .editMessageText(
             chatId,
             loadingMsg.message_id,
@@ -738,21 +767,31 @@ bot.on("text", async (ctx) => {
             lines.join("\n"),
             { parse_mode: "HTML" },
           )
-          .catch(() => ctx.reply(lines.join("\n"), { parse_mode: "HTML" }));
-        return ctx.reply("Choose an option:", mainKeyboard);
+          .catch(async () => {
+            await ctx.reply(lines.join("\n"), {
+              parse_mode: "HTML",
+              ...mainKeyboard,
+            });
+            return null;
+          });
+        if (edited) return ctx.reply("Choose an option:", mainKeyboard);
       } catch (err) {
         track("usage_error", { chatId, meterId: text, error: err.message });
-        await ctx.telegram
+        const edited = await ctx.telegram
           .editMessageText(
             chatId,
             loadingMsg.message_id,
             undefined,
             "⚠️ Failed to fetch usage history. Please try again.",
           )
-          .catch(() =>
-            ctx.reply("⚠️ Failed to fetch usage history. Please try again."),
-          );
-        return ctx.reply("Choose an option:", mainKeyboard);
+          .catch(async () => {
+            await ctx.reply(
+              "⚠️ Failed to fetch usage history. Please try again.",
+              mainKeyboard,
+            );
+            return null;
+          });
+        if (edited) return ctx.reply("Choose an option:", mainKeyboard);
       }
     }
 
@@ -765,7 +804,7 @@ bot.on("text", async (ctx) => {
         resetSession(chatId);
         return ctx.reply(
           "⚠️ No valid Meter ID on record. Please enter your 8-digit Meter ID:",
-          Markup.keyboard([["❌ Cancel"]]).resize(),
+          cancelKeyboard,
         );
       }
 
@@ -787,6 +826,17 @@ bot.on("text", async (ctx) => {
         meterId: session.txtMtrId,
         amount: amountDollars,
       });
+
+      // Assert meter ID is still valid at the point of URL construction —
+      // don't rely solely on the check that happened when it was first stored.
+      // This is a last-resort guard; isValidMeterId must remain /^\d{8}$/.
+      if (!isValidMeterId(session.txtMtrId)) {
+        resetSession(chatId);
+        return ctx.reply(
+          "⚠️ Something went wrong with your Meter ID. Please start again.",
+          mainKeyboard,
+        );
+      }
 
       const webAppPath = getWebAppPath(session.hostel);
       const webAppUrl =
@@ -867,7 +917,10 @@ bot.on("text", async (ctx) => {
 
     if (session.stage === "awaiting_meter_id_balance") {
       if (!isValidMeterId(text)) {
-        return ctx.reply("⚠️ Invalid Meter ID. Please try again.");
+        return ctx.reply(
+          "⚠️ Invalid Meter ID. Please try again.",
+          cancelKeyboard,
+        );
       }
 
       session.stage = "idle";
@@ -890,7 +943,7 @@ bot.on("text", async (ctx) => {
           lines.push(`💰 <b>Balance:</b> unavailable`);
         }
 
-        await ctx.telegram
+        const edited = await ctx.telegram
           .editMessageText(
             chatId,
             loadingMsg.message_id,
@@ -898,22 +951,32 @@ bot.on("text", async (ctx) => {
             lines.join("\n"),
             { parse_mode: "HTML" }, // no reply_markup here
           )
-          .catch(() => ctx.reply(lines.join("\n"), { parse_mode: "HTML" }));
-        return ctx.reply("Choose an option:", mainKeyboard);
+          .catch(async () => {
+            await ctx.reply(lines.join("\n"), {
+              parse_mode: "HTML",
+              ...mainKeyboard,
+            });
+            return null;
+          });
+        if (edited) return ctx.reply("Choose an option:", mainKeyboard);
       } catch (err) {
         track("balance_error", { chatId, error: err.message });
-        await ctx.telegram
+        const edited = await ctx.telegram
           .editMessageText(
             chatId,
             loadingMsg.message_id,
             undefined,
             "⚠️ Failed to fetch balance. Please try again.",
           )
-          .catch(() =>
-            ctx.reply("⚠️ Failed to fetch balance. Please try again."),
-          );
+          .catch(async () => {
+            await ctx.reply(
+              "⚠️ Failed to fetch balance. Please try again.",
+              mainKeyboard,
+            );
+            return null;
+          });
 
-        return ctx.reply("Choose an option:", mainKeyboard);
+        if (edited) return ctx.reply("Choose an option:", mainKeyboard);
       }
     }
 
@@ -923,10 +986,11 @@ bot.on("text", async (ctx) => {
       const replyToId = ctx.message?.reply_to_message?.message_id;
       if (replyToId && pendingReplies.has(replyToId)) {
         const pending = pendingReplies.get(replyToId);
+        const rootOwnerMsgId = pending?.ownerMsgId ?? replyToId; // same logic as owner side
         if (
           pending &&
           String(pending.chatId) === String(chatId) &&
-          pending.ownerMsgId
+          rootOwnerMsgId
         ) {
           // Send back to owner, threading onto the original notification
           const sentOwnerMsg = await bot.telegram
@@ -935,7 +999,7 @@ bot.on("text", async (ctx) => {
               `↩️ <b>User reply:</b>\n\n${escHtml(text)}`,
               {
                 parse_mode: "HTML",
-                reply_to_message_id: pending.ownerMsgId,
+                reply_to_message_id: rootOwnerMsgId,
               },
             )
             .catch(() => null);
@@ -947,7 +1011,7 @@ bot.on("text", async (ctx) => {
           // Update entry so owner can reply to this new message too
           pendingReplies.set(sentOwnerMsg.message_id, {
             chatId,
-            ownerMsgId: pending.ownerMsgId,
+            ownerMsgId: rootOwnerMsgId,
             createdAt: Date.now(),
           });
 

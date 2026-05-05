@@ -212,13 +212,7 @@ bot.hears("💰 Balance", async (ctx) => {
 
   return ctx.reply(
     "🔌 Please enter your 8-digit Meter ID to check your balance:",
-    {
-      ...cancelKeyboard,
-      reply_markup: {
-        ...cancelKeyboard.reply_markup,
-        input_field_placeholder: "e.g. 12345678",
-      },
-    },
+    cancelKeyboard,
   );
 });
 
@@ -233,13 +227,7 @@ bot.hears("📊 Usage", async (ctx) => {
 
   return ctx.reply(
     "🔌 Please enter your 8-digit Meter ID to view the last 7 days of usage:",
-    {
-      ...cancelKeyboard,
-      reply_markup: {
-        ...cancelKeyboard.reply_markup,
-        input_field_placeholder: "e.g. 12345678",
-      },
-    },
+    cancelKeyboard,
   );
 });
 
@@ -331,13 +319,7 @@ bot.command("balance", async (ctx) => {
 
   return ctx.reply(
     "🔌 Please enter your 8-digit Meter ID to check your balance:",
-    {
-      ...cancelKeyboard,
-      reply_markup: {
-        ...cancelKeyboard.reply_markup,
-        input_field_placeholder: "e.g. 12345678",
-      },
-    },
+    cancelKeyboard,
   );
 });
 
@@ -352,13 +334,7 @@ bot.command("usage", async (ctx) => {
 
   return ctx.reply(
     "🔌 Please enter your 8-digit Meter ID to view the last 7 days of usage:",
-    {
-      ...cancelKeyboard,
-      reply_markup: {
-        ...cancelKeyboard.reply_markup,
-        input_field_placeholder: "e.g. 12345678",
-      },
-    },
+    cancelKeyboard,
   );
 });
 
@@ -429,13 +405,7 @@ bot.action("hostel_cp2", async (ctx) => {
   }
 
   session.stage = "awaiting_meter_id";
-  return ctx.reply("🔌 Please enter your 8-digit Meter ID:", {
-    ...cancelKeyboard,
-    reply_markup: {
-      ...cancelKeyboard.reply_markup,
-      input_field_placeholder: "e.g. 12345678",
-    },
-  });
+  return ctx.reply("🔌 Please enter your 8-digit Meter ID:", cancelKeyboard);
 });
 
 bot.action("hostel_cp2nus", async (ctx) => {
@@ -460,13 +430,7 @@ bot.action("hostel_cp2nus", async (ctx) => {
   }
 
   session.stage = "awaiting_meter_id";
-  return ctx.reply("🔌 Please enter your 8-digit Meter ID:", {
-    ...cancelKeyboard,
-    reply_markup: {
-      ...cancelKeyboard.reply_markup,
-      input_field_placeholder: "e.g. 12345678",
-    },
-  });
+  return ctx.reply("🔌 Please enter your 8-digit Meter ID:", cancelKeyboard);
 });
 
 bot.on("web_app_data", async (ctx) => {
@@ -840,13 +804,7 @@ bot.on("text", async (ctx) => {
         resetSession(chatId);
         return ctx.reply(
           "⚠️ No valid Meter ID on record. Please enter your 8-digit Meter ID:",
-          {
-            ...cancelKeyboard,
-            reply_markup: {
-              ...cancelKeyboard.reply_markup,
-              input_field_placeholder: "e.g. 12345678",
-            },
-          },
+          cancelKeyboard,
         );
       }
 

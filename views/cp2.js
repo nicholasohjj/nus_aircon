@@ -1,54 +1,70 @@
 const { escHtml, safeJson } = require("../services/utils");
-const { htmlHead, errorPage, telegramInit } = require("./shared");
 
-module.exports.errorPage = errorPage;
+function sharedStyles(extra = "") {
+  return `
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap');
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --bg: #0d0d0d; --surface: #161616; --border: #2a2a2a;
+        --accent: #00e5a0; --accent-dim: rgba(0,229,160,0.12);
+        --text: #f0f0f0; --muted: #888; --error: #ff5c5c;
+        --mono: 'DM Mono', monospace; --sans: 'DM Sans', sans-serif;
+      }
+      body { background: var(--bg); color: var(--text); font-family: var(--sans);
+        min-height: 100vh; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; padding: 24px; }
+      .card { background: var(--surface); border: 1px solid var(--border);
+        border-radius: 16px; padding: 32px 28px; width: 100%; max-width: 380px; text-align: center; }
+      .detail-row { display: flex; justify-content: space-between; align-items: center;
+        padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 0.875rem; }
+      .detail-row:last-of-type { border-bottom: none; }
+      .detail-label { color: var(--muted); }
+      .detail-value { font-family: var(--mono); font-weight: 500; color: var(--accent);
+        max-width: 58%; text-align: right; word-break: break-word; }
+      ${extra}
+    </style>`;
+}
 
-function loadingPage(txtMtrId, txtAmount, meterInfo = {}, basePath = "") {
+function errorPage(msg) {
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Error</title>
+  <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0d0d0d;color:#ff5c5c;padding:24px;text-align:center;}</style>
+  </head><body><div><h2>Error</h2><p>${escHtml(msg)}</p></div></body></html>`;
+}
+
+function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
   const amtDisplay = Number(txtAmount).toFixed(2);
   const balanceDisplay =
     meterInfo.credit_bal !== undefined && meterInfo.credit_bal !== null
       ? Number(meterInfo.credit_bal).toFixed(2)
       : null;
 
-  const addressRow = meterInfo.address
-    ? `<div class="detail-row">
-           <span class="detail-label">Address</span>
-           <span class="detail-value">${escHtml(meterInfo.address)}</span>
-         </div>`
-    : "";
-
-  const balanceRow =
-    balanceDisplay !== null
-      ? `<div class="detail-row">
-           <span class="detail-label">Current Balance</span>
-           <span class="detail-value">SGD ${escHtml(balanceDisplay)}</span>
-         </div>`
-      : "";
-
   return `<!DOCTYPE html>
   <html lang="en">
   <head>
-  ${htmlHead({
-    title: "EVS (cp2) Payment",
-    extra: `
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EVS (cp2) Payment</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  ${sharedStyles(`
     .logo { width:52px; height:52px; background:var(--accent-dim); border:1.5px solid var(--accent);
       border-radius:14px; display:flex; align-items:center; justify-content:center;
       margin:0 auto 24px; font-size:24px; }
     h1 { font-size:1.25rem; font-weight:700; letter-spacing:-0.02em; margin-bottom:6px; }
     .subtitle { color:var(--muted); font-size:0.85rem; margin-bottom:28px; }
     .spinner-wrap { margin:32px 0 16px; display:flex; flex-direction:column; align-items:center; gap:14px; }
-    .spinner { width:36px; height:36px; border:2.5px solid var(--border);
-      border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite; }
+    .spinner { width:36px; height:36px; border:2.5px solid var(--border); border-top-color:var(--accent);
+      border-radius:50%; animation:spin 0.8s linear infinite; }
     @keyframes spin { to { transform:rotate(360deg); } }
-    .status-text { color:var(--muted); font-size:0.82rem; font-family:var(--mono); min-height:1.2em; }
+    .status-text { color:var(--muted); font-size:0.82rem; font-family:var(--mono);
+      min-height:1.2em; transition:opacity 0.3s; }
     .error-card { background:rgba(255,92,92,0.08); border:1px solid rgba(255,92,92,0.3);
       border-radius:12px; padding:16px; margin-top:20px; font-size:0.83rem; color:var(--error);
       display:none; text-align:left; font-family:var(--mono); line-height:1.5; }
     .retry-btn { margin-top:16px; background:var(--accent); color:#000; border:none;
       border-radius:10px; padding:12px 24px; font-family:var(--sans); font-weight:700;
       font-size:0.9rem; cursor:pointer; display:none; width:100%; }
-  `,
-  })}
+  `)}
   </head>
   <body>
   <div class="card">
@@ -60,9 +76,27 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}, basePath = "") {
       <span class="detail-label">Meter ID</span>
       <span class="detail-value">${escHtml(txtMtrId)}</span>
     </div>
-
-        ${addressRow}
-    ${balanceRow}
+  
+      ${
+        meterInfo.address
+          ? `
+    <div class="detail-row">
+      <span class="detail-label">Address</span>
+      <span class="detail-value">${escHtml(meterInfo.address)}</span>
+    </div>`
+          : ""
+      }
+  
+    ${
+      balanceDisplay !== null
+        ? `
+    <div class="detail-row">
+      <span class="detail-label">Current Balance</span>
+      <span class="detail-value">SGD ${escHtml(balanceDisplay)}</span>
+    </div>`
+        : ""
+    }
+    
     <div class="detail-row">
       <span class="detail-label">Amount</span>
       <span class="detail-value">SGD ${escHtml(amtDisplay)}</span>
@@ -78,10 +112,12 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}, basePath = "") {
   </div>
   
   <script>
-      ${telegramInit()}
-      const METER_ID = ${safeJson(txtMtrId)};
-      const TXN_AMOUNT = ${safeJson(txtAmount)};
-      const BASE_PATH = ${safeJson(basePath)};
+    const tg = window.Telegram?.WebApp;
+    if (tg) { tg.ready(); tg.expand(); }
+  
+
+const METER_ID = ${safeJson(txtMtrId)};
+const TXN_AMOUNT = ${safeJson(txtAmount)};
   
     const statusEl = document.getElementById('statusText');
     const errorEl = document.getElementById('errorCard');
@@ -122,11 +158,11 @@ function loadingPage(txtMtrId, txtAmount, meterInfo = {}, basePath = "") {
       setStatus('init');
   
       try {
-const resp = await fetch(
-  BASE_PATH + '/webapp/bootstrap?txtMtrId=' + encodeURIComponent(METER_ID) +
-  '&txtAmount=' + encodeURIComponent(TXN_AMOUNT),
-  { method: 'GET' }
-);
+        const resp = await fetch(
+          '/webapp/bootstrap?txtMtrId=' + encodeURIComponent(METER_ID) +
+          '&txtAmount=' + encodeURIComponent(TXN_AMOUNT),
+          { method: 'GET' }
+        );
   
         const out = await resp.json().catch(() => ({}));
   
@@ -172,21 +208,18 @@ function cardPaymentPage({
   token = "",
 }) {
   const amtDisplay = Number(amount || 0).toFixed(2);
-
-  const ENETS_SCRIPTS = [
-    "https://www.enets.sg/GW2/js/jsbn.js",
-    "https://www.enets.sg/GW2/js/prng4.js",
-    "https://www.enets.sg/GW2/js/rng.js",
-    "https://www.enets.sg/GW2/js/rsa.js",
-  ];
-
   return `<!DOCTYPE html>
     <html lang="en">
     <head>
-  ${htmlHead({
-    title: "Card Payment",
-    extraScripts: ENETS_SCRIPTS,
-    extra: `
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Payment</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://www.enets.sg/GW2/js/jsbn.js"></script>
+  <script src="https://www.enets.sg/GW2/js/prng4.js"></script>
+  <script src="https://www.enets.sg/GW2/js/rng.js"></script>
+  <script src="https://www.enets.sg/GW2/js/rsa.js"></script>
+  ${sharedStyles(`
     .card { max-width:400px; text-align:left; padding:28px 24px; }
     .logo { width:44px; height:44px; background:var(--accent-dim); border:1.5px solid var(--accent);
       border-radius:12px; display:flex; align-items:center; justify-content:center;
@@ -215,8 +248,7 @@ function cardPaymentPage({
     #globalError { background:rgba(255,92,92,0.08); border:1px solid rgba(255,92,92,0.3);
       border-radius:10px; padding:12px 14px; font-size:0.83rem; color:var(--error);
       margin-top:14px; display:none; font-family:var(--mono); }
-  `,
-  })}
+  `)}
     </head>
     <body>
     <div class="card">
@@ -232,7 +264,7 @@ function cardPaymentPage({
       <form id="payForm" autocomplete="off" onsubmit="return handleSubmit(event)">
     
         <div class="field">
-<label for="cardName">Cardholder name</label>
+          <label>Cardholder name</label>
           <input type="text" id="cardName" name="cardName"
             placeholder="As printed on card" autocomplete="cc-name"
             style="font-family:var(--sans)">
@@ -240,7 +272,7 @@ function cardPaymentPage({
         </div>
     
         <div class="field">
-<label for="cardEmail">Email</label>
+          <label>Email</label>
           <input type="email" id="cardEmail" name="cardEmail"
             placeholder="you@example.com" autocomplete="email"
             style="font-family:var(--sans)">
@@ -248,7 +280,7 @@ function cardPaymentPage({
         </div>
     
         <div class="field">
-<label for="cardNo">Card number</label>
+          <label>Card number</label>
           <input type="tel" id="cardNo" name="cardNo"
             placeholder="•••• •••• •••• ••••" maxlength="19"
             autocomplete="cc-number" inputmode="numeric">
@@ -257,19 +289,19 @@ function cardPaymentPage({
     
         <div class="row3">
           <div class="field" style="grid-column: span 1">
-<label for="expMth">Month</label>
+            <label>Month</label>
             <input type="tel" id="expMth" name="expMth"
               placeholder="MM" maxlength="2" inputmode="numeric">
             <div class="err-msg" id="errMth">01–12</div>
           </div>
           <div class="field">
-<label for="expYr">Year</label>
+            <label>Year</label>
             <input type="tel" id="expYr" name="expYr"
               placeholder="YY" maxlength="2" inputmode="numeric">
             <div class="err-msg" id="errYr">e.g. 27</div>
           </div>
           <div class="field">
-<label for="cvv">CVV</label>
+            <label>CVV</label>
             <input type="tel" id="cvv" name="cvv"
               placeholder="•••" maxlength="4" inputmode="numeric">
             <div class="err-msg" id="errCvv">Required</div>
@@ -282,8 +314,8 @@ function cardPaymentPage({
         <input type="hidden" name="netsTxnRef" value="${escHtml(netsTxnRef)}">
         <input type="hidden" name="token" value="${escHtml(token)}">
 
-<button type="submit" class="btn" id="submitBtn" aria-busy="false">
-  <span id="btnLabel" aria-live="polite">Pay SGD ${escHtml(amtDisplay)}</span>
+        <button type="submit" class="btn" id="submitBtn">
+          <span id="btnLabel">Pay SGD ${escHtml(amtDisplay)}</span>
         </button>
         <p class="lock">🔒 eNETS RSA-encrypted · Powered by eNETS</p>
         <div id="globalError"></div>
@@ -291,8 +323,8 @@ function cardPaymentPage({
     </div>
     
     <script>
-    ${telegramInit()}
-
+      const tg = window.Telegram?.WebApp;
+      if (tg) { tg.ready(); tg.expand(); }
   
       const RSA_N = ${safeJson(n)};
       const RSA_E = ${safeJson(e)};
@@ -323,18 +355,17 @@ function cardPaymentPage({
     });
   }
   
-function autoNext(currentId, nextId, maxLen) {
-  const el = document.getElementById(currentId);
-  const next = document.getElementById(nextId);
-  el.addEventListener('input', function (e) {
-    if (e.inputType === 'deleteContentBackward' ||
-        e.inputType === 'deleteContentForward') return;
-    const value = this.value.replace(/[^0-9]/g, '');
-    if (value.length >= maxLen) {
-      next?.focus();
+      function autoNext(currentId, nextId, maxLen) {
+      const el = document.getElementById(currentId);
+      const next = document.getElementById(nextId);
+    
+      el.addEventListener('input', function () {
+        const value = this.value.replace(/\D/g, '');
+        if (value.length >= maxLen) {
+          next?.focus();
+        }
+      });
     }
-  });
-}
       
       function show(id) { document.getElementById(id).style.display = 'block'; }
       function hide(id) { document.getElementById(id).style.display = 'none'; }
@@ -392,7 +423,6 @@ function autoNext(currentId, nextId, maxLen) {
     
         const btn = document.getElementById('submitBtn');
         btn.disabled = true;
-        btn.setAttribute('aria-busy', 'true');
         document.getElementById('btnLabel').textContent = 'Encrypting…';
     
         try {
@@ -442,7 +472,7 @@ function autoNext(currentId, nextId, maxLen) {
     token,
   });
   
-  const result = await fetch(BASE_PATH + '/webapp/enets_pay', {
+  const result = await fetch('/webapp/enets_pay', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: payload.toString(),
@@ -454,11 +484,10 @@ function autoNext(currentId, nextId, maxLen) {
     throw new Error(out.error || 'Payment request failed');
   }
   
-window.location.href = BASE_PATH + '/webapp/result?token=' + encodeURIComponent(token);
+window.location.href = '/webapp/result?token=' + encodeURIComponent(token);
     
         } catch (err) {
           btn.disabled = false;
-          btn.setAttribute('aria-busy', 'false');
           document.getElementById('btnLabel').textContent = 'Pay SGD ${escHtml(amtDisplay)}';
           const ge = document.getElementById('globalError');
           ge.textContent = '⚠️ ' + (err.message || 'Encryption error');
@@ -468,10 +497,10 @@ window.location.href = BASE_PATH + '/webapp/result?token=' + encodeURIComponent(
         return false;
       }
     
-document.getElementById('cardNo').addEventListener('blur', function() {
-  let v = this.value.replace(/[^0-9]/g,'').substring(0,16);
-  this.value = v.replace(/(\d{4})(?=\d)/g,'$1 ');
-});
+      document.getElementById('cardNo').addEventListener('input', function() {
+        let v = this.value.replace(/\\D/g,'').substring(0,16);
+        this.value = v.replace(/(\\d{4})(?=\\d)/g,'$1 ');
+      });
   
       
   // Auto jump between fields
@@ -496,65 +525,39 @@ function renderFinalResultPage(parsed) {
   const noteColor = ok ? "var(--accent)" : "var(--error)";
   const btnBg = ok ? "var(--accent)" : "#2a2a2a";
   const btnColor = ok ? "#000" : "#fff";
+
   const title = ok ? "Top-Up Successful" : "Top-Up Failed";
-  const subtitle = ok
-    ? "Your transaction has been processed."
-    : "Your transaction was not completed.";
-  const logoEmoji = ok ? "✅" : "⚠️";
   const reason = parsed.reason || "Unable to determine transaction outcome.";
   const topUpUrl = `/webapp?txtMtrId=${encodeURIComponent(parsed.meterId || "")}&txtAmount=${encodeURIComponent((parsed.amount || "").replace(/[^0-9.]/g, ""))}`;
-
-  const addressRow = parsed.address
-    ? `<div class="detail-row">
-       <span class="detail-label">Address</span>
-       <span class="detail-value">${escHtml(parsed.address)}</span>
-     </div>`
-    : "";
-
-  const balanceRow =
-    parsed.balance !== undefined &&
-    parsed.balance !== null &&
-    parsed.balance !== ""
-      ? `<div class="detail-row">
-       <span class="detail-label">Balance</span>
-       <span class="detail-value">SGD ${escHtml(Number(parsed.balance).toFixed(2))}</span>
-     </div>`
-      : "";
-
-  const amountVal =
-    parsed.amount !== undefined &&
-    parsed.amount !== null &&
-    parsed.amount !== ""
-      ? `SGD ${escHtml(Number(String(parsed.amount).replace(/[^0-9.]/g, "")).toFixed(2))}`
-      : "-";
 
   return `<!DOCTYPE html>
     <html lang="en">
       <head>
-  ${htmlHead({
-    title,
-    extra: `
-    .logo { width:52px; height:52px; background:${logoBg}; border:1.5px solid ${logoBorder};
-      border-radius:14px; display:flex; align-items:center; justify-content:center;
-      margin:0 auto 24px; font-size:24px; }
-    h1 { margin:0 0 8px; font-size:1.25rem; }
-    .subtitle { color:var(--muted); font-size:0.9rem; margin-bottom:24px; }
-    .detail-value { color:${valueColor}; }
-    .status-note { margin-top:22px; padding:14px; border-radius:12px; font-size:0.9rem;
-      background:${noteBg}; border:1px solid ${noteBorder}; color:${noteColor}; }
-    .actions { margin-top:20px; display:grid; gap:10px; }
-    .btn { width:100%; border:none; border-radius:10px; padding:12px 16px;
-      font-family:var(--sans); font-size:0.95rem; font-weight:700; cursor:pointer;
-      background:${btnBg}; color:${btnColor}; }
-    .btn.secondary { background:#242424; color:#fff; }
-  `,
-  })}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${escHtml(title)}</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    ${sharedStyles(`
+      .logo { width:52px; height:52px; background:${logoBg}; border:1.5px solid ${logoBorder};
+        border-radius:14px; display:flex; align-items:center; justify-content:center;
+        margin:0 auto 24px; font-size:24px; }
+      h1 { margin:0 0 8px; font-size:1.25rem; }
+      .subtitle { color:var(--muted); font-size:0.9rem; margin-bottom:24px; }
+      .detail-value { color:${valueColor}; }
+      .status-note { margin-top:22px; padding:14px; border-radius:12px; font-size:0.9rem;
+        background:${noteBg}; border:1px solid ${noteBorder}; color:${noteColor}; }
+      .actions { margin-top:20px; display:grid; gap:10px; }
+      .btn { width:100%; border:none; border-radius:10px; padding:12px 16px;
+        font-family:var(--sans); font-size:0.95rem; font-weight:700; cursor:pointer;
+        background:${btnBg}; color:${btnColor}; }
+      .btn.secondary { background:#242424; color:#fff; }
+    `)}
   </head>
     <body>
       <div class="card">
-        <div class="logo">${logoEmoji}</div>
+        <div class="logo">${ok ? "✅" : "⚠️"}</div>
         <h1>${escHtml(title)}</h1>
-          <div class="subtitle">${subtitle}</div>
+        <div class="subtitle">${ok ? "Your transaction has been processed." : "Your transaction was not completed."}</div>
     
         <div class="detail-row">
           <span class="detail-label">Reference</span>
@@ -564,12 +567,34 @@ function renderFinalResultPage(parsed) {
           <span class="detail-label">Meter ID</span>
           <span class="detail-value">${escHtml(parsed.meterId || "-")}</span>
         </div>
-                  ${addressRow}
-          ${balanceRow}
-          <div class="detail-row">
-            <span class="detail-label">Amount</span>
-            <span class="detail-value">${amountVal}</span>
-          </div>
+        ${
+          parsed.address
+            ? `
+        <div class="detail-row">
+          <span class="detail-label">Address</span>
+          <span class="detail-value">${escHtml(parsed.address)}</span>
+        </div>`
+            : ""
+        }
+        ${
+          parsed.balance !== undefined &&
+          parsed.balance !== null &&
+          parsed.balance !== ""
+            ? `
+        <div class="detail-row">
+          <span class="detail-label">Balance</span>
+          <span class="detail-value">SGD ${escHtml(Number(parsed.balance).toFixed(2))}</span>
+        </div>`
+            : ""
+        }
+        ${
+          parsed.amount !== undefined &&
+          parsed.amount !== null &&
+          parsed.amount !== ""
+            ? `<div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value">SGD ${escHtml(Number(String(parsed.amount).replace(/[^0-9.]/g, "")).toFixed(2))}</span></div>`
+            : `<div class="detail-row"><span class="detail-label">Amount</span><span class="detail-value">-</span></div>`
+        }
+    
         <div class="status-note">${escHtml(reason)}</div>
     
         <div class="actions">
@@ -579,7 +604,8 @@ function renderFinalResultPage(parsed) {
       </div>
     
     <script>
-    ${telegramInit()}
+      const tg = window.Telegram?.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
 
   function closeMiniApp() {
     if (tg) {
@@ -607,6 +633,7 @@ function renderFinalResultPage(parsed) {
 }
 
 module.exports = {
+  errorPage,
   loadingPage,
   cardPaymentPage,
   renderFinalResultPage,

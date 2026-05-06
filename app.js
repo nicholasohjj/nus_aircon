@@ -10,6 +10,7 @@ const { captureException } = require("./services/analytics");
 require("./bot");
 
 const app = express();
+app.use("/assets", express.static("assets"));
 
 let termsHtml;
 try {

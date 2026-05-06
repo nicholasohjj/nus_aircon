@@ -221,6 +221,19 @@ function cardPaymentPage({
   <script src="https://www.enets.sg/GW2/js/rsa.js"></script>
   ${sharedStyles(`
     .card { max-width:400px; text-align:left; padding:28px 24px; }
+    .card-number-wrap { position: relative; }
+.card-number-wrap input { padding-right: 58px; }
+.card-brand-icon { position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  width: 38px; height: 24px; border-radius: 4px; display: block;
+  background-image: url("/assets/generic.svg"); background-repeat: no-repeat;
+  background-position: center; background-size: contain; opacity: 0.65; }
+.card-brand-icon.visa { background-image: url("/assets/visa.svg"); opacity: 1; }
+.card-brand-icon.mastercard { background-image: url("/assets/mastercard.svg"); opacity: 1; }
+.cvv-wrap { position: relative; }
+.cvv-wrap input { padding-right: 42px; }
+.cvv-icon { position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 18px; background-image: url("/assets/code.svg");
+  background-repeat: no-repeat; background-position: center; background-size: contain; opacity: 0.65; }
     .logo { width:44px; height:44px; background:var(--accent-dim); border:1.5px solid var(--accent);
       border-radius:12px; display:flex; align-items:center; justify-content:center;
       font-size:20px; margin-bottom:18px; }
@@ -281,9 +294,12 @@ function cardPaymentPage({
     
         <div class="field">
           <label>Card number</label>
-          <input type="tel" id="cardNo" name="cardNo"
-            placeholder="•••• •••• •••• ••••" maxlength="19"
-            autocomplete="cc-number" inputmode="numeric">
+          <div class="card-number-wrap">
+            <input type="tel" id="cardNo" name="cardNo"
+              placeholder="•••• •••• •••• ••••" maxlength="19"
+              autocomplete="cc-number" inputmode="numeric">
+            <span id="cardBrandIcon" class="card-brand-icon"></span>
+          </div>
           <div class="err-msg" id="errCard">Enter a valid card number</div>
         </div>
     
@@ -302,8 +318,11 @@ function cardPaymentPage({
           </div>
           <div class="field">
             <label>CVV</label>
-            <input type="tel" id="cvv" name="cvv"
-              placeholder="•••" maxlength="4" inputmode="numeric">
+            <div class="cvv-wrap">
+              <input type="tel" id="cvv" name="cvv"
+                placeholder="•••" maxlength="4" inputmode="numeric">
+              <span class="cvv-icon"></span>
+            </div>
             <div class="err-msg" id="errCvv">Required</div>
           </div>
         </div>
@@ -329,7 +348,23 @@ function cardPaymentPage({
       const RSA_N = ${safeJson(n)};
       const RSA_E = ${safeJson(e)};
       const MERCHANT_TXN_REF = ${safeJson(merchantTxnRef)};  
-      // Replicate eNETS linebrk(str, maxLen)
+
+      function detectCardBrand(digits) {
+  if (/^4/.test(digits)) return 'visa';
+  const first2 = Number(digits.slice(0, 2));
+  const first4 = Number(digits.slice(0, 4));
+  if ((first2 >= 51 && first2 <= 55) || (first4 >= 2221 && first4 <= 2720)) return 'mastercard';
+  return '';
+}
+
+function updateCardBrandIcon(digits) {
+  const icon = document.getElementById('cardBrandIcon');
+  const brand = detectCardBrand(digits);
+  icon.className = 'card-brand-icon';
+  if (brand) { icon.classList.add(brand); icon.setAttribute('aria-label', brand); }
+  else { icon.removeAttribute('aria-label'); }
+}
+
       function linebrk(str, maxLen) {
         let out = '';
         let i = 0;
@@ -402,7 +437,10 @@ function cardPaymentPage({
         if (!email || !/^[^@]+@[^@]+\\.[^@]+$/.test(email)) {
           setError('cardEmail','errEmail','Valid email required'); ok = false; }
         if (!card || card.length < 13 || card.length > 19 || !/^\\d+$/.test(card)) {
-          setError('cardNo','errCard','Enter a valid card number'); ok = false; }
+          setError('cardNo','errCard','Enter a valid card number'); ok = false;
+        } else if (detectCardBrand(card) !== 'visa' && detectCardBrand(card) !== 'mastercard') {
+          setError('cardNo','errCard','Only Visa and Mastercard are accepted'); ok = false;
+        } 
         const m = parseInt(mth, 10);
         if (!mth || isNaN(m) || m < 1 || m > 12) {
           setError('expMth','errMth','01–12'); ok = false; }
@@ -500,6 +538,7 @@ window.location.href = '/webapp/result?token=' + encodeURIComponent(token);
       document.getElementById('cardNo').addEventListener('input', function() {
         let v = this.value.replace(/\\D/g,'').substring(0,16);
         this.value = v.replace(/(\\d{4})(?=\\d)/g,'$1 ');
+          updateCardBrandIcon(v);
       });
   
       

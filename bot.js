@@ -940,7 +940,8 @@ bot.on("text", async (ctx) => {
           `🏠 Hostel: *${hostelLabel}*\n` +
           `🔌 Meter ID: \`${session.txtMtrId}\`\n` +
           `💵 Amount: $${amountDollars.toFixed(2)} SGD\n\n` +
-          `Tap below to proceed to payment:`,
+          `Tap below to proceed to payment:\n\n` +
+          `📄 By proceeding, you agree to our [Terms of Use](${SERVER_URL}/terms).`,
         Markup.keyboard([
           [Markup.button.webApp("💳 Pay Now", webAppUrl)],
           ["❌ Cancel"],

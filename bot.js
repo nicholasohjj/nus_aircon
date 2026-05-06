@@ -10,6 +10,13 @@ const PENDING_REPLY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const chatLocks = new Map();
 const chatWaiters = new Map(); // chatId -> number (active + queued count)
 
+const TOPUP_DISABLED = process.env.TOPUP_DISABLED === "true" || true; // force disabled for now
+
+const TOPUP_DISABLED_MESSAGE =
+  "⚠️ Top-ups are temporarily unavailable.\n\n" +
+  "EVS is currently having a vendor-side issue where completed top-ups may not update the meter balance properly.\n\n" +
+  "For now, please use the official EVS portal for urgent top-ups, and use /balance here to check your current balance.";
+
 const hostelInlineKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback("🏠 PGPR / PGP / RC / NUSC (cp2)", "hostel_cp2")],
   [
@@ -21,7 +28,6 @@ const hostelInlineKeyboard = Markup.inlineKeyboard([
 ]);
 
 const mainKeyboard = Markup.keyboard([
-  ["⚡ Top Up"],
   ["💰 Balance", "📊 Usage"],
   ["ℹ️ Help"],
 ]).resize();
@@ -176,7 +182,7 @@ function helpText() {
     `• Minimum: $6.00 SGD\n` +
     `• Maximum: $50.00 SGD\n\n` +
     `*Useful commands*\n` +
-    `• /topup — start a new top-up\n` +
+    `• /topup — temporarily unavailable due to EVS vendor issue\n` +
     `• /balance — check meter balance\n` +
     `• /usage — show last 7 days of daily consumption,\n` +
     `  estimated days remaining, and current balance\n` +
@@ -247,10 +253,12 @@ bot.hears("ℹ️ Help", sendHelp);
 
 bot.hears("⚡ Top Up", async (ctx) => {
   const chatId = ctx.chat?.id;
-  if (!chatId) return;
+  if (chatId) {
+    track("topup_disabled_button", { chatId });
+    resetSession(chatId);
+  }
 
-  startTopUp(chatId);
-  return ctx.reply("🏠 Please select your hostel:", hostelInlineKeyboard);
+  return ctx.reply(TOPUP_DISABLED_MESSAGE, mainKeyboard);
 });
 
 // bot.hears("💬 Feedback", async (ctx) => {
@@ -364,11 +372,10 @@ bot.command("usage", async (ctx) => {
 
 bot.command("topup", async (ctx) => {
   const chatId = ctx.chat?.id;
-  track("topup_command", { chatId });
-  if (!chatId) return;
+  track("topup_disabled_command", { chatId });
+  if (chatId) resetSession(chatId);
 
-  startTopUp(chatId);
-  return ctx.reply("🏠 Please select your hostel:", hostelInlineKeyboard);
+  return ctx.reply(TOPUP_DISABLED_MESSAGE, mainKeyboard);
 });
 
 bot.command("feedback", async (ctx) => {
@@ -410,6 +417,12 @@ bot.hears("❌ Cancel", async (ctx) => {
 bot.action("hostel_cp2", async (ctx) => {
   const chatId = ctx.chat?.id;
   if (!chatId) return;
+
+  if (TOPUP_DISABLED) {
+    await ctx.answerCbQuery("Top-ups are temporarily unavailable.");
+    resetSession(chatId);
+    return ctx.reply(TOPUP_DISABLED_MESSAGE, mainKeyboard);
+  }
 
   const session = getSession(chatId);
   if (session.stage !== "awaiting_hostel") {

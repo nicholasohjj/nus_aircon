@@ -10,6 +10,13 @@ const PENDING_REPLY_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const chatLocks = new Map();
 const chatWaiters = new Map(); // chatId -> number (active + queued count)
 
+let topupDisabled = process.env.TOPUP_DISABLED === "true";
+
+const TOPUP_DISABLED_MESSAGE =
+  "⚠️ Top-ups are temporarily unavailable.\n\n" +
+  "EVS is currently having a vendor-side issue where completed top-ups may not update the meter balance properly.\n\n" +
+  "For now, please use the official EVS portal for urgent top-ups, and use /balance here to check your current balance.";
+
 const hostelInlineKeyboard = Markup.inlineKeyboard([
   [Markup.button.callback("🏠 PGPR / PGP / RC / NUSC (cp2)", "hostel_cp2")],
   [
@@ -41,6 +48,10 @@ const {
 } = require("./services/analytics");
 const { isValidAmount, isValidMeterId } = require("./services/validators");
 const bot = new Telegraf(TOKEN);
+
+function isOwner(ctx) {
+  return OWNER_CHAT_ID && String(ctx.chat?.id) === String(OWNER_CHAT_ID);
+}
 
 function isHttpsUrl(url) {
   try {
@@ -249,6 +260,13 @@ bot.hears("⚡ Top Up", async (ctx) => {
   const chatId = ctx.chat?.id;
   if (!chatId) return;
 
+  if (topupDisabled) {
+    track("topup_disabled_button", { chatId });
+    resetSession(chatId);
+    return ctx.reply(TOPUP_DISABLED_MESSAGE, mainKeyboard);
+  }
+
+  track("topup_button", { chatId });
   startTopUp(chatId);
   return ctx.reply("🏠 Please select your hostel:", hostelInlineKeyboard);
 });
@@ -275,6 +293,19 @@ bot.start(async (ctx) => {
   if (chatId) resetSession(chatId);
 
   const payload = ctx.startPayload?.trim() ?? "";
+
+  if (
+    topupDisabled &&
+    (isValidMeterId(payload) || /^nus_\d{8}$/.test(payload))
+  ) {
+    track("topup_disabled_deeplink", { chatId, payload });
+    if (chatId) resetSession(chatId);
+
+    return ctx.reply(
+      `⚡ EVS Electricity Bot\n\n${TOPUP_DISABLED_MESSAGE}`,
+      mainKeyboard,
+    );
+  }
 
   const cp2nusMatch = payload.match(/^nus_(\d{8})$/);
   if (cp2nusMatch) {
@@ -317,6 +348,36 @@ bot.start(async (ctx) => {
     `⚡ EVS Electricity Top-Up\n\nChoose an option below:\n\n` +
       `📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
     { parse_mode: "HTML", reply_markup: mainKeyboard.reply_markup },
+  );
+});
+
+bot.command("topupoff", async (ctx) => {
+  if (!isOwner(ctx)) return;
+  topupDisabled = true;
+  console.log("⛔ Top-ups disabled by owner via /topupoff");
+  return ctx.reply(
+    "⛔ Top-ups are now *disabled*. Users will see the maintenance message.\n\nUse /topupon to re-enable.",
+    { parse_mode: "Markdown" },
+  );
+});
+
+bot.command("topupon", async (ctx) => {
+  if (!isOwner(ctx)) return;
+  topupDisabled = false;
+  console.log("✅ Top-ups enabled by owner via /topupon");
+  return ctx.reply(
+    "✅ Top-ups are now *enabled*. Users can top up again.\n\nUse /topupoff to disable.",
+    { parse_mode: "Markdown" },
+  );
+});
+
+bot.command("topupstatus", async (ctx) => {
+  if (!isOwner(ctx)) return;
+  return ctx.reply(
+    topupDisabled
+      ? "⛔ Top-ups are currently *disabled*. Use /topupon to enable."
+      : "✅ Top-ups are currently *enabled*. Use /topupoff to disable.",
+    { parse_mode: "Markdown" },
   );
 });
 
@@ -364,9 +425,15 @@ bot.command("usage", async (ctx) => {
 
 bot.command("topup", async (ctx) => {
   const chatId = ctx.chat?.id;
-  track("topup_command", { chatId });
   if (!chatId) return;
 
+  if (topupDisabled) {
+    track("topup_disabled_command", { chatId });
+    resetSession(chatId);
+    return ctx.reply(TOPUP_DISABLED_MESSAGE, mainKeyboard);
+  }
+
+  track("topup_command", { chatId });
   startTopUp(chatId);
   return ctx.reply("🏠 Please select your hostel:", hostelInlineKeyboard);
 });
@@ -411,6 +478,12 @@ bot.action("hostel_cp2", async (ctx) => {
   const chatId = ctx.chat?.id;
   if (!chatId) return;
 
+  if (topupDisabled) {
+    await ctx.answerCbQuery("Top-ups are temporarily unavailable.");
+    resetSession(chatId);
+    return ctx.reply(TOPUP_DISABLED_MESSAGE, mainKeyboard);
+  }
+
   const session = getSession(chatId);
   if (session.stage !== "awaiting_hostel") {
     return ctx.answerCbQuery("⚠️ Please start a new top-up.");
@@ -441,6 +514,12 @@ bot.action("hostel_cp2", async (ctx) => {
 bot.action("hostel_cp2nus", async (ctx) => {
   const chatId = ctx.chat?.id;
   if (!chatId) return;
+
+  if (topupDisabled) {
+    await ctx.answerCbQuery("Top-ups are temporarily unavailable.");
+    resetSession(chatId);
+    return ctx.reply(TOPUP_DISABLED_MESSAGE, mainKeyboard);
+  }
 
   const session = getSession(chatId);
   if (session.stage !== "awaiting_hostel") {
@@ -580,6 +659,24 @@ bot.on("text", async (ctx) => {
     if (!text || text.startsWith("/")) return;
 
     const session = getSession(chatId);
+
+    if (
+      topupDisabled &&
+      [
+        "awaiting_hostel",
+        "awaiting_meter_id",
+        "awaiting_amount",
+        "awaiting_payment",
+      ].includes(session.stage)
+    ) {
+      track("topup_disabled_existing_session", {
+        chatId,
+        stage: session.stage,
+      });
+
+      resetSession(chatId);
+      return ctx.reply(TOPUP_DISABLED_MESSAGE, mainKeyboard);
+    }
 
     if (session.stage === "awaiting_feedback_rating") {
       const rating = parseStar(text);
@@ -1093,7 +1190,9 @@ bot.on("text", async (ctx) => {
       dropPendingUpdates: true,
     });
 
-    console.log("🤖 EVS Telegram bot running...");
+    console.log(
+      `🤖 EVS Telegram bot running... (top-ups ${topupDisabled ? "DISABLED" : "enabled"})`,
+    );
   } catch (err) {
     console.error("Failed to launch Telegram bot:", err);
     process.exit(1);

@@ -198,7 +198,7 @@ async function sendHelp(ctx) {
 
 async function setupTelegramUi() {
   await bot.telegram.setMyCommands([
-    { command: "topup", description: "Start electricity top-up" },
+    { command: "topup", description: "Temporarily unavailable" },
     { command: "balance", description: "Check meter balance" },
     { command: "usage", description: "Show recent daily usage" },
     { command: "feedback", description: "Share feedback or report an issue" },
@@ -283,6 +283,19 @@ bot.start(async (ctx) => {
   if (chatId) resetSession(chatId);
 
   const payload = ctx.startPayload?.trim() ?? "";
+
+  if (
+    TOPUP_DISABLED &&
+    (isValidMeterId(payload) || /^nus_\d{8}$/.test(payload))
+  ) {
+    track("topup_disabled_deeplink", { chatId, payload });
+    if (chatId) resetSession(chatId);
+
+    return ctx.reply(
+      `⚡ EVS Electricity Bot\n\n${TOPUP_DISABLED_MESSAGE}`,
+      mainKeyboard,
+    );
+  }
 
   const cp2nusMatch = payload.match(/^nus_(\d{8})$/);
   if (cp2nusMatch) {
@@ -386,6 +399,7 @@ bot.command("feedback", async (ctx) => {
 
   resetSession(chatId);
   const session = getSession(chatId);
+  
   session.stage = "awaiting_feedback_rating";
 
   return ctx.reply(
@@ -400,7 +414,7 @@ bot.command("cancel", async (ctx) => {
   const chatId = ctx.chat?.id;
   if (chatId) resetSession(chatId);
   return ctx.reply(
-    "❌ Top-up cancelled. Use /topup to start again.",
+    "❌ Cancelled. Top-ups are temporarily unavailable. Use /balance to check your balance.",
     mainKeyboard,
   );
 });
@@ -409,7 +423,7 @@ bot.hears("❌ Cancel", async (ctx) => {
   const chatId = ctx.chat?.id;
   if (chatId) resetSession(chatId);
   return ctx.reply(
-    "❌ Top-up cancelled. Use /topup to start again.",
+    "❌ Cancelled. Top-ups are temporarily unavailable. Use /balance to check your balance.",
     mainKeyboard,
   );
 });
@@ -454,6 +468,12 @@ bot.action("hostel_cp2", async (ctx) => {
 bot.action("hostel_cp2nus", async (ctx) => {
   const chatId = ctx.chat?.id;
   if (!chatId) return;
+
+  if (TOPUP_DISABLED) {
+    await ctx.answerCbQuery("Top-ups are temporarily unavailable.");
+    resetSession(chatId);
+    return ctx.reply(TOPUP_DISABLED_MESSAGE, mainKeyboard);
+  }
 
   const session = getSession(chatId);
   if (session.stage !== "awaiting_hostel") {
@@ -593,6 +613,24 @@ bot.on("text", async (ctx) => {
     if (!text || text.startsWith("/")) return;
 
     const session = getSession(chatId);
+
+    if (
+      TOPUP_DISABLED &&
+      [
+        "awaiting_hostel",
+        "awaiting_meter_id",
+        "awaiting_amount",
+        "awaiting_payment",
+      ].includes(session.stage)
+    ) {
+      track("topup_disabled_existing_session", {
+        chatId,
+        stage: session.stage,
+      });
+    
+      resetSession(chatId);
+      return ctx.reply(TOPUP_DISABLED_MESSAGE, mainKeyboard);
+    }
 
     if (session.stage === "awaiting_feedback_rating") {
       const rating = parseStar(text);
@@ -1083,13 +1121,13 @@ bot.on("text", async (ctx) => {
 
     if (looksLikeMeterId || looksLikeAmount) {
       return ctx.reply(
-        "⚠️ It looks like your previous session may have expired.\n\nUse /topup to start a new top-up, or /help for available commands.",
+        "⚠️ It looks like your previous session may have expired.\n\nTop-ups are temporarily unavailable. Use /balance to check your balance, or /help for available commands.",
         mainKeyboard,
       );
     }
 
     return ctx.reply(
-      "I didn't understand that. Use /topup to top up, /balance to check balance, or /help for instructions.",
+      "I didn't understand that. Top-ups are temporarily unavailable. Use /balance to check balance, /usage to view usage, or /help for instructions.",
       mainKeyboard,
     );
   });
@@ -1129,7 +1167,7 @@ bot.catch((err, ctx) => {
   if (ctx?.chat?.id) {
     resetSession(ctx.chat.id);
     ctx
-      .reply("⚠️ Something went wrong. Please try /topup again.")
+      .reply("⚠️ Something went wrong. Please try /balance again or use /help.")
       .catch(() => {});
   }
 });

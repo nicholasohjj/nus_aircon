@@ -464,29 +464,19 @@ describe("renderFinalResultPage (cp2nus)", () => {
     expect(html).toContain("&lt;b");
   });
 
-  test("Close button calls tg.sendData with result payload", () => {
+  test("Close button calls /webapp/notify endpoint", () => {
     const html = renderFinalResultPage(SUCCESS_PARSED);
-    expect(html).toContain("tg.sendData");
+    expect(html).toContain("/webapp/notify");
   });
 
-  test("sendData payload includes status", () => {
-    const html = renderFinalResultPage(SUCCESS_PARSED);
-    expect(html).toContain("status:");
+  test("notify fetch sends token", () => {
+    const html = renderFinalResultPage({ ...SUCCESS_PARSED, token: "tok-123" });
+    expect(html).toContain("tok-123");
   });
 
-  test("sendData payload includes merchantTxnRef", () => {
+  test("Close button calls tg.close()", () => {
     const html = renderFinalResultPage(SUCCESS_PARSED);
-    expect(html).toContain("merchantTxnRef:");
-  });
-
-  test("sendData payload includes meterId", () => {
-    const html = renderFinalResultPage(SUCCESS_PARSED);
-    expect(html).toContain("meterId:");
-  });
-
-  test("sendData payload includes amount", () => {
-    const html = renderFinalResultPage(SUCCESS_PARSED);
-    expect(html).toContain("amount:");
+    expect(html).toContain("tg.close()");
   });
 
   test("includes Telegram WebApp script", () => {

@@ -32,7 +32,7 @@ function errorPage(msg) {
   </head><body><div><h2>Error</h2><p>${escHtml(msg)}</p></div></body></html>`;
 }
 
-function loadingPage(txtMtrId, txtAmount, meterInfo = {}) {
+function loadingPage(txtMtrId, txtAmount, meterInfo = {}, chatId = "") {
   const amtDisplay = Number(txtAmount).toFixed(2);
   const balanceDisplay =
     meterInfo.credit_bal !== undefined && meterInfo.credit_bal !== null
@@ -160,7 +160,8 @@ const TXN_AMOUNT = ${safeJson(txtAmount)};
       try {
         const resp = await fetch(
           '/webapp/bootstrap?txtMtrId=' + encodeURIComponent(METER_ID) +
-          '&txtAmount=' + encodeURIComponent(TXN_AMOUNT),
+          '&txtAmount=' + encodeURIComponent(TXN_AMOUNT) +
+          '&chatId=' + encodeURIComponent(${safeJson(chatId || "")}),
           { method: 'GET' }
         );
   
@@ -555,6 +556,7 @@ window.location.href = '/webapp/result?token=' + encodeURIComponent(token);
 
 function renderFinalResultPage(parsed) {
   const ok = parsed.status === "success";
+  const token = parsed.token || "";
 
   const logoBg = ok ? "var(--accent-dim)" : "rgba(255,92,92,0.12)";
   const logoBorder = ok ? "var(--accent)" : "var(--error)";
@@ -646,26 +648,29 @@ function renderFinalResultPage(parsed) {
       const tg = window.Telegram?.WebApp;
   if (tg) { tg.ready(); tg.expand(); }
 
-  function closeMiniApp() {
-    if (tg) {
-      const payload = JSON.stringify({
-        status: ${safeJson(parsed.status)},
-        merchantTxnRef: ${safeJson(parsed.merchantTxnRef || "")},
-        meterId: ${safeJson(parsed.meterId || "")},
-        amount: ${safeJson(parsed.amount || "")},
-        address: ${safeJson(parsed.address || "")},
-        balance: ${safeJson(parsed.balance || "")},
-        reason: ${safeJson(parsed.reason || "")},
-      });
-      tg.sendData(payload);
-      tg.close();
-    }
-  }
+      async function closeMiniApp() {
+        try {
+          await fetch('/webapp/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: ${safeJson(token)} }),
+          });
+        } catch (_) {}
+        if (tg) tg.close();
+      }
 
       document.getElementById('closeBtn').addEventListener('click', closeMiniApp);
-        document.getElementById('topUpAgainBtn').addEventListener('click', function() {
-    window.location.href = this.dataset.url;
-  });
+document.getElementById('topUpAgainBtn').addEventListener('click', async function() {
+  const url = this.dataset.url;
+  try {
+    await fetch('/webapp/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: ${safeJson(parsed.token || "")} }),
+    });
+  } catch (_) {}
+  window.location.href = url;
+});
     </script>
     </body>
     </html>`;

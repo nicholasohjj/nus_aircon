@@ -13,6 +13,7 @@ function loadingPage(
   txtAmount,
   meterInfo = {},
   basePath = CP2NUS_BASE_PATH,
+  chatId = "",
 ) {
   const amtDisplay = Number(txtAmount).toFixed(2);
   const balanceDisplay =
@@ -102,9 +103,11 @@ function loadingPage(
       try {
         document.getElementById('statusText').textContent = 'Creating transaction…';
   
-const resp = await fetch('${escHtml(basePath)}/webapp/bootstrap?txtMtrId=' + encodeURIComponent(METER_ID) +
-          '&txtAmount=' + encodeURIComponent(TXN_AMOUNT)
-        );
+      const resp = await fetch(
+        '${escHtml(basePath)}/webapp/bootstrap?txtMtrId=' + encodeURIComponent(METER_ID) +
+        '&txtAmount=' + encodeURIComponent(TXN_AMOUNT) +
+        '&chatId=' + encodeURIComponent(${safeJson(chatId || "")})
+      );
         const out = await resp.json().catch(() => ({}));
   
         if (!resp.ok || !out.ok) throw new Error(out.error || 'Failed to initialise payment');
@@ -519,6 +522,7 @@ function renderFinalResultPage(parsed, basePath = CP2NUS_BASE_PATH) {
   const ok = parsed.status === "success";
   const title = ok ? "Top-Up Successful" : "Top-Up Failed";
   const reason = parsed.reason || "Unable to determine transaction outcome.";
+  const token = parsed.token || ""; // ← add this
 
   return `<!DOCTYPE html>
   <html lang="en">
@@ -594,24 +598,28 @@ function renderFinalResultPage(parsed, basePath = CP2NUS_BASE_PATH) {
     const tg = window.Telegram?.WebApp;
   if (tg) { tg.ready(); tg.expand(); }
 
-  function closeMiniApp() {
-    if (tg) {
-      const payload = JSON.stringify({
-        status: ${safeJson(parsed.status)},
-        merchantTxnRef: ${safeJson(parsed.merchantTxnRef || "")},
-        meterId: ${safeJson(parsed.meterId || "")},
-        amount: ${safeJson(parsed.amount || "")},
-        address: ${safeJson(parsed.address || "")},
-        balance: ${safeJson(parsed.balance || "")},
-reason: ${safeJson(reason)},
-      });
-      tg.sendData(payload);
-    }
-  }
+async function closeMiniApp() {
+  try {
+    await fetch('${escHtml(basePath)}/webapp/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: ${safeJson(token)} }),
+    });
+  } catch (_) {}
+  if (tg) tg.close();
+}
 
-  document.getElementById('topUpAgainBtn').addEventListener('click', function() {
-    window.location.href = this.dataset.url;
-  });
+document.getElementById('topUpAgainBtn').addEventListener('click', async function() {
+  const url = this.dataset.url;
+  try {
+    await fetch('${escHtml(basePath)}/webapp/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: ${safeJson(token)} }),
+    });
+  } catch (_) {}
+  window.location.href = url;
+});
   document.getElementById('closeBtn').addEventListener('click', closeMiniApp);
 
 </script>

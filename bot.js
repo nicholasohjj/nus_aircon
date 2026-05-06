@@ -883,7 +883,8 @@ bot.on("text", async (ctx) => {
       const webAppPath = getWebAppPath(session.hostel);
       const webAppUrl =
         `${SERVER_URL}${webAppPath}?txtMtrId=${encodeURIComponent(session.txtMtrId)}` +
-        `&txtAmount=${encodeURIComponent(session.amountDollars)}`;
+        `&txtAmount=${encodeURIComponent(session.amountDollars)}` +
+        `&chatId=${encodeURIComponent(chatId)}`;
 
       session.webAppUrl = webAppUrl;
       session.stage = "awaiting_payment";
@@ -1118,3 +1119,5 @@ bot.catch((err, ctx) => {
       .catch(() => {});
   }
 });
+
+module.exports = { bot };

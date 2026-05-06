@@ -23,11 +23,13 @@ const {
   submitPanForm,
   postToB2s,
 } = require("../services/cp2nusService");
+const { bot } = require("../bot");
+
 router.use(express.urlencoded({ extended: false }));
 router.use(express.json());
 
 router.get("/webapp", async (req, res) => {
-  const { txtMtrId, txtAmount } = req.query;
+  const { txtMtrId, txtAmount, chatId } = req.query;
   if (!txtMtrId || !txtAmount)
     return res.status(400).send(errorPage("Missing meter ID or amount."));
 
@@ -51,18 +53,20 @@ router.get("/webapp", async (req, res) => {
     });
     res.setHeader("Content-Type", "text/html; charset=UTF-8");
     return res.send(
-      loadingPage(txtMtrId, txtAmount, meterSummary, CP2NUS_BASE_PATH),
+      loadingPage(txtMtrId, txtAmount, meterSummary, CP2NUS_BASE_PATH, chatId),
     );
   } catch {
     res.setHeader("Content-Type", "text/html; charset=UTF-8");
-    return res.send(loadingPage(txtMtrId, txtAmount, {}, CP2NUS_BASE_PATH));
+    return res.send(
+      loadingPage(txtMtrId, txtAmount, {}, CP2NUS_BASE_PATH, chatId),
+    );
   }
 });
 
 // ── Bootstrap: runs all steps, returns redirect URL to /webapp/pay ─────────────
 
 router.get("/webapp/bootstrap", async (req, res) => {
-  const { txtMtrId, txtAmount } = req.query;
+  const { txtMtrId, txtAmount, chatId } = req.query;
 
   if (!txtMtrId || !txtAmount) {
     return res
@@ -106,6 +110,7 @@ router.get("/webapp/bootstrap", async (req, res) => {
     const token = createPaymentSession({
       txtMtrId,
       txtAmount,
+      chatId: chatId || null,
       address: boot.meta.address || "",
       balance: String(boot.meta.balance ?? ""),
       nets: boot.nets,
@@ -189,6 +194,43 @@ router.get("/webapp/pay", (req, res) => {
       token,
     }),
   );
+});
+
+router.post("/webapp/notify", express.json(), async (req, res) => {
+  try {
+    const { token } = req.body;
+    const session = getPaymentSession(token);
+    if (!session || !session.chatId) return res.json({ ok: true });
+
+    const {
+      status,
+      merchantTxnRef,
+      txtMtrId,
+      txtAmount,
+      reason,
+      address,
+      balance,
+    } = session;
+    const ok = status === "success";
+    const lines = [
+      ok ? "✅ *Top-Up Successful*" : "⚠️ *Top-Up Failed*",
+      "",
+      `🔌 Meter ID: \`${txtMtrId || "-"}\``,
+    ];
+    if (address) lines.push(`🏠 Address: ${address}`);
+    if (txtAmount) lines.push(`💵 Amount: SGD ${Number(txtAmount).toFixed(2)}`);
+    if (balance !== "" && balance != null)
+      lines.push(`💰 New Balance: SGD ${Number(balance).toFixed(2)}`);
+    if (merchantTxnRef) lines.push(`🧾 Reference: \`${merchantTxnRef}\``);
+    if (!ok && reason) lines.push(`\n❌ Reason: ${reason}`);
+
+    await bot.telegram.sendMessage(session.chatId, lines.join("\n"), {
+      parse_mode: "Markdown",
+    });
+  } catch (err) {
+    console.error("notify error", err);
+  }
+  res.json({ ok: true });
 });
 
 // ── eNETS pay proxy ───────────────────────────────────────────────────────────
@@ -400,6 +442,7 @@ router.get("/webapp/result", (req, res) => {
         reason,
         address,
         balance,
+        token,
       },
       CP2NUS_BASE_PATH,
     ),

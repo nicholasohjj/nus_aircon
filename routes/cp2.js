@@ -6,6 +6,7 @@ const cheerio = require("cheerio");
 const { getMeterSummary } = require("../services/ore");
 const { track, captureException } = require("../services/analytics");
 const { validationError } = require("../services/validators");
+const { bot } = require("../bot");
 const {
   extractHiddenField,
   extractMerchantTxnRef,
@@ -34,6 +35,43 @@ router.use(express.urlencoded({ extended: false }));
 router.use(express.json());
 
 // ── Existing routes ───────────────────────────────────────────────────────────
+
+router.post("/webapp/notify", express.json(), async (req, res) => {
+  try {
+    const { token } = req.body;
+    const session = getPaymentSession(token);
+    if (!session || !session.chatId) return res.json({ ok: true });
+
+    const {
+      status,
+      merchantTxnRef,
+      txtMtrId,
+      txtAmount,
+      reason,
+      address,
+      balance,
+    } = session;
+    const ok = status === "success";
+    const lines = [
+      ok ? "✅ *Top-Up Successful*" : "⚠️ *Top-Up Failed*",
+      "",
+      `🔌 Meter ID: \`${txtMtrId || "-"}\``,
+    ];
+    if (address) lines.push(`🏠 Address: ${address}`);
+    if (txtAmount) lines.push(`💵 Amount: SGD ${Number(txtAmount).toFixed(2)}`);
+    if (balance !== "" && balance != null)
+      lines.push(`💰 New Balance: SGD ${Number(balance).toFixed(2)}`);
+    if (merchantTxnRef) lines.push(`🧾 Reference: \`${merchantTxnRef}\``);
+    if (!ok && reason) lines.push(`\n❌ Reason: ${reason}`);
+
+    await bot.telegram.sendMessage(session.chatId, lines.join("\n"), {
+      parse_mode: "Markdown",
+    });
+  } catch (err) {
+    console.error("notify error", err);
+  }
+  res.json({ ok: true });
+});
 
 router.post("/purchase_flow", async (req, res) => {
   try {
@@ -102,6 +140,7 @@ router.get("/webapp/result", (req, res) => {
         reason,
         address,
         balance,
+        token,
       }),
     );
   }
@@ -130,7 +169,7 @@ router.get("/webapp/result", (req, res) => {
 });
 
 router.get("/webapp/bootstrap", async (req, res) => {
-  const { txtMtrId, txtAmount } = req.query;
+  const { txtMtrId, txtAmount, chatId } = req.query;
 
   const inputError = validationError({ txtMtrId, txtAmount });
 
@@ -203,6 +242,7 @@ router.get("/webapp/bootstrap", async (req, res) => {
     const token = createPaymentSession({
       txtMtrId,
       txtAmount,
+      chatId: chatId || null,
       address: meterSummary.address || "",
       balance: String(meterSummary.credit_bal ?? ""),
       nets: { n, e, netsMid, netsTxnRef, merchantTxnRef, actionUrl },
@@ -558,7 +598,7 @@ router.post("/evs/creditpayment", async (req, res) => {
 // then renders the eNETS payment page directly inside the WebApp.
 
 router.get("/webapp", async (req, res) => {
-  const { txtMtrId, txtAmount } = req.query;
+  const { txtMtrId, txtAmount, chatId } = req.query;
 
   const inputError = validationError({ txtMtrId, txtAmount });
 
@@ -574,12 +614,19 @@ router.get("/webapp", async (req, res) => {
       amount: txtAmount,
       ua: req.get("user-agent"),
     });
-    return res.status(200).send(loadingPage(txtMtrId, txtAmount, meterSummary));
+    return res
+      .status(200)
+      .send(loadingPage(txtMtrId, txtAmount, meterSummary, chatId));
   } catch (err) {
     return res
       .status(200)
       .send(
-        loadingPage(txtMtrId, txtAmount, { address: null, credit_bal: null }),
+        loadingPage(
+          txtMtrId,
+          txtAmount,
+          { address: null, credit_bal: null },
+          chatId,
+        ),
       );
   }
 });

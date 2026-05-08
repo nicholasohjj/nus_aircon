@@ -109,6 +109,94 @@ function getSession(chatId) {
   return sessions[chatId]; // always the current, live object
 }
 
+/**
+ * Shared handler for balance-only and usage lookups.
+ * mode: "balance" | "usage"
+ */
+async function handleMeterIdLookup(ctx, chatId, text, mode) {
+  const session = getSession(chatId);
+  session.stage = "idle";
+
+  await ctx.sendChatAction("typing");
+  const loadingMsg = await ctx
+    .reply(
+      mode === "usage" ? "🔍 Checking recent usage…" : "🔍 Checking balance…",
+    )
+    .catch(() => null);
+  if (!loadingMsg) return;
+
+  try {
+    const [summary, usage] =
+      mode === "usage"
+        ? await Promise.all([getMeterSummary(text), getMeterUsage(text, 7)])
+        : [await getMeterSummary(text), null];
+
+    const lines = [`⚡ <b>Meter ID:</b> <code>${text}</code>`];
+
+    if (summary.address)
+      lines.push(`🏠 <b>Address:</b> ${escHtml(summary.address)}`);
+
+    const bal = Number(summary.credit_bal);
+    if (summary.credit_bal != null && Number.isFinite(bal)) {
+      lines.push(`💰 <b>Balance:</b> SGD ${bal.toFixed(2)}`);
+    } else if (mode === "balance") {
+      lines.push(`💰 <b>Balance:</b> unavailable`);
+    }
+
+    if (mode === "usage") {
+      lines.push("");
+      lines.push("<b>Daily consumption (last 7 days)</b>");
+      lines.push(
+        (await formatUsageSummary(
+          usage.history,
+          summary.credit_bal,
+          7,
+          text,
+        )) || "No usage data available.",
+      );
+    }
+
+    const edited = await ctx.telegram
+      .editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        undefined,
+        lines.join("\n"),
+        {
+          parse_mode: "HTML",
+        },
+      )
+      .catch(async () => {
+        await ctx.reply(lines.join("\n"), {
+          parse_mode: "HTML",
+          ...mainKeyboard,
+        });
+        return null;
+      });
+
+    if (edited) return ctx.reply("Choose an option:", mainKeyboard);
+  } catch (err) {
+    track(`${mode}_error`, { chatId, meterId: text, error: err.message });
+
+    const edited = await ctx.telegram
+      .editMessageText(
+        chatId,
+        loadingMsg.message_id,
+        undefined,
+        `⚠️ Failed to fetch ${mode === "usage" ? "usage history" : "balance"}. Please try again.`,
+      )
+      .catch(async () => {
+        await ctx.reply(
+          `⚠️ Failed to fetch ${mode === "usage" ? "usage history" : "balance"}. Please try again.`,
+          mainKeyboard,
+        );
+        return null;
+      });
+
+    if (edited) return ctx.reply("Choose an option:", mainKeyboard);
+  }
+}
+
 async function withChatLock(chatId, fn) {
   chatWaiters.set(chatId, (chatWaiters.get(chatId) ?? 0) + 1);
 
@@ -853,79 +941,13 @@ bot.on("text", async (ctx) => {
     }
 
     if (session.stage === "awaiting_meter_id_usage") {
-      if (!isValidMeterId(text)) {
+      if (!isValidMeterId(text))
         return ctx.reply(
           "⚠️ Invalid Meter ID. Please try again.",
           cancelKeyboard,
         );
-      }
 
-      session.stage = "idle";
-      await ctx.sendChatAction("typing");
-      const loadingMsg = await ctx
-        .reply("🔍 Checking recent usage…")
-        .catch(() => null);
-      if (!loadingMsg) return;
-      try {
-        const [summary, usage] = await Promise.all([
-          getMeterSummary(text),
-          getMeterUsage(text, 7),
-        ]);
-
-        const lines = [`⚡ <b>Meter ID:</b> <code>${text}</code>`];
-        if (summary.address)
-          lines.push(`🏠 <b>Address:</b> ${escHtml(summary.address)}`);
-
-        const bal = Number(summary.credit_bal);
-        if (summary.credit_bal != null && Number.isFinite(bal)) {
-          lines.push(`💰 <b>Balance:</b> SGD ${bal.toFixed(2)}`);
-        }
-
-        lines.push("");
-        lines.push("<b>Daily consumption (last 7 days)</b>");
-        lines.push(
-          (await formatUsageSummary(
-            usage.history,
-            summary.credit_bal,
-            7,
-            text,
-          )) || "No usage data available.",
-        );
-
-        const edited = await ctx.telegram
-          .editMessageText(
-            chatId,
-            loadingMsg.message_id,
-            undefined,
-            lines.join("\n"),
-            { parse_mode: "HTML" },
-          )
-          .catch(async () => {
-            await ctx.reply(lines.join("\n"), {
-              parse_mode: "HTML",
-              ...mainKeyboard,
-            });
-            return null;
-          });
-        if (edited) return ctx.reply("Choose an option:", mainKeyboard);
-      } catch (err) {
-        track("usage_error", { chatId, meterId: text, error: err.message });
-        const edited = await ctx.telegram
-          .editMessageText(
-            chatId,
-            loadingMsg.message_id,
-            undefined,
-            "⚠️ Failed to fetch usage history. Please try again.",
-          )
-          .catch(async () => {
-            await ctx.reply(
-              "⚠️ Failed to fetch usage history. Please try again.",
-              mainKeyboard,
-            );
-            return null;
-          });
-        if (edited) return ctx.reply("Choose an option:", mainKeyboard);
-      }
+      return handleMeterIdLookup(ctx, chatId, text, "usage");
     }
 
     if (session.stage === "awaiting_amount") {
@@ -1057,68 +1079,13 @@ bot.on("text", async (ctx) => {
     }
 
     if (session.stage === "awaiting_meter_id_balance") {
-      if (!isValidMeterId(text)) {
+      if (!isValidMeterId(text))
         return ctx.reply(
           "⚠️ Invalid Meter ID. Please try again.",
           cancelKeyboard,
         );
-      }
 
-      session.stage = "idle";
-      await ctx.sendChatAction("typing");
-      const loadingMsg = await ctx
-        .reply("🔍 Checking balance…")
-        .catch(() => null);
-      if (!loadingMsg) return;
-      try {
-        const summary = await getMeterSummary(text);
-
-        const lines = [`⚡ <b>Meter ID:</b> <code>${text}</code>`];
-        if (summary.address)
-          lines.push(`🏠 <b>Address:</b> ${escHtml(summary.address)}`);
-
-        const bal = Number(summary.credit_bal);
-        if (summary.credit_bal != null && Number.isFinite(bal)) {
-          lines.push(`💰 <b>Balance:</b> SGD ${bal.toFixed(2)}`);
-        } else {
-          lines.push(`💰 <b>Balance:</b> unavailable`);
-        }
-
-        const edited = await ctx.telegram
-          .editMessageText(
-            chatId,
-            loadingMsg.message_id,
-            undefined,
-            lines.join("\n"),
-            { parse_mode: "HTML" }, // no reply_markup here
-          )
-          .catch(async () => {
-            await ctx.reply(lines.join("\n"), {
-              parse_mode: "HTML",
-              ...mainKeyboard,
-            });
-            return null;
-          });
-        if (edited) return ctx.reply("Choose an option:", mainKeyboard);
-      } catch (err) {
-        track("balance_error", { chatId, error: err.message });
-        const edited = await ctx.telegram
-          .editMessageText(
-            chatId,
-            loadingMsg.message_id,
-            undefined,
-            "⚠️ Failed to fetch balance. Please try again.",
-          )
-          .catch(async () => {
-            await ctx.reply(
-              "⚠️ Failed to fetch balance. Please try again.",
-              mainKeyboard,
-            );
-            return null;
-          });
-
-        if (edited) return ctx.reply("Choose an option:", mainKeyboard);
-      }
+      return handleMeterIdLookup(ctx, chatId, text, "balance");
     }
 
     // Inside withChatLock, before the final fallback reply:

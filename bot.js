@@ -1,7 +1,12 @@
 require("dotenv").config();
 const { Telegraf, Markup } = require("telegraf");
 const { escHtml } = require("./services/utils");
-const { saveUser, getUser, forgetUser } = require("./services/userStore");
+const {
+  saveUser,
+  getUser,
+  forgetUser,
+  getAllChatIds,
+} = require("./services/userStore");
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
@@ -53,6 +58,12 @@ const bot = new Telegraf(TOKEN);
 
 function isOwner(ctx) {
   return OWNER_CHAT_ID && String(ctx.chat?.id) === String(OWNER_CHAT_ID);
+}
+
+function lowBalanceWarning(bal) {
+  const n = Number(bal);
+  if (!Number.isFinite(n) || n >= 5) return null;
+  return `⚠️ <b>Low balance:</b> Your balance is SGD ${n.toFixed(2)}. Consider topping up soon.`;
 }
 
 function isHttpsUrl(url) {
@@ -156,6 +167,9 @@ async function handleMeterIdLookup(
     } else if (mode === "balance") {
       lines.push(`💰 <b>Balance:</b> unavailable`);
     }
+
+    const warn = lowBalanceWarning(summary.credit_bal);
+    if (warn) lines.push(`\n${warn}`);
 
     if (mode === "usage") {
       lines.push("");
@@ -511,6 +525,45 @@ bot.start(async (ctx) => {
   );
 });
 
+bot.command("broadcast", async (ctx) => {
+  if (!isOwner(ctx)) return;
+
+  const message = ctx.message?.text?.replace(/^\/broadcast\s*/, "").trim();
+  if (!message) {
+    return ctx.reply("Usage: /broadcast <message>");
+  }
+
+  const chatIds = getAllChatIds();
+  if (!chatIds.length) {
+    return ctx.reply("No known users to broadcast to.");
+  }
+
+  await ctx.reply(`📡 Broadcasting to ${chatIds.length} user(s)…`);
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const chatId of chatIds) {
+    try {
+      await bot.telegram.sendMessage(
+        chatId,
+        `📢 <b>Message from the developer:</b>\n\n${escHtml(message)}`,
+        { parse_mode: "HTML" },
+      );
+      sent++;
+    } catch (err) {
+      if (err.response?.error_code === 403) {
+        forgetUser(chatId);
+      }
+      failed++;
+    }
+
+    await new Promise((res) => setTimeout(res, 50));
+  }
+
+  return ctx.reply(`✅ Broadcast complete. Sent: ${sent}, Failed: ${failed}.`);
+});
+
 bot.command("topupoff", async (ctx) => {
   if (!isOwner(ctx)) return;
   topupDisabled = true;
@@ -774,6 +827,11 @@ bot.on("web_app_data", async (ctx) => {
       const balNum = Number(balance);
       if (!isNaN(balNum))
         lines.push(`💰 New Balance: SGD ${balNum.toFixed(2)}`);
+
+      if (ok) {
+        const warn = lowBalanceWarning(balance);
+        if (warn) lines.push(`\n${warn}`);
+      }
     }
 
     if (merchantTxnRef) lines.push(`🧾 Reference: \`${merchantTxnRef}\``);

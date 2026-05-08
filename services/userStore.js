@@ -39,6 +39,13 @@ function saveUser(chatId, meterId, hostel) {
   ).run(String(chatId), meterId, hostel, Date.now());
 }
 
+function getAllChatIds() {
+  return db
+    .prepare("SELECT chat_id FROM users")
+    .all()
+    .map((r) => r.chat_id);
+}
+
 /**
  * Retrieve saved meter ID and hostel for a user.
  * @param {string|number} chatId
@@ -64,4 +71,4 @@ function forgetUser(chatId) {
   return result.changes > 0;
 }
 
-module.exports = { saveUser, getUser, forgetUser };
+module.exports = { saveUser, getUser, forgetUser, getAllChatIds };

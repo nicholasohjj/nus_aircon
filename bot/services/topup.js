@@ -6,7 +6,7 @@ const {
   hostelInlineKeyboard,
 } = require("../constants");
 const { getSession, resetSession } = require("./session");
-const { getUser } = require("../../services/userStore");
+const { getUser } = require("./userStore");
 
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
 

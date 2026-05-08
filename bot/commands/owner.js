@@ -1,5 +1,5 @@
 const { escHtml } = require("../../services/utils");
-const { getAllChatIds, forgetUser } = require("../../services/userStore");
+const { getAllChatIds, forgetUser } = require("../services/userStore");
 const { state } = require("../bot");
 
 const OWNER_CHAT_ID = process.env.OWNER_CHAT_ID;

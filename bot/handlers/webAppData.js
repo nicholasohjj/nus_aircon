@@ -1,4 +1,4 @@
-const { saveUser } = require("../../services/userStore");
+const { saveUser } = require("../services/userStore");
 const { track } = require("../../services/analytics");
 const { resetSession, getSession } = require("../services/session");
 const { mainKeyboard } = require("../constants");
@@ -61,7 +61,7 @@ function registerWebAppDataHandler(bot) {
       const session = getSession(chatId);
       const hostel =
         session?.hostel ??
-        require("../../services/userStore").getUser(chatId)?.hostel ??
+        require("../services/userStore").getUser(chatId)?.hostel ??
         null;
 
       if (ok && meterId && hostel) saveUser(chatId, meterId, hostel);

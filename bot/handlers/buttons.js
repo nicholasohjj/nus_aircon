@@ -1,5 +1,5 @@
 const { track } = require("../../services/analytics");
-const { getUser } = require("../../services/userStore");
+const { getUser } = require("../services/userStore");
 const { resetSession, getSession } = require("../services/session");
 const { handleMeterIdLookup } = require("../services/lookup");
 const { handleTopUpStart } = require("../services/topup");

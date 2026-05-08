@@ -5,7 +5,7 @@ const {
   getMeterUsage,
   formatUsageSummary,
 } = require("../../services/ore");
-const { saveUser } = require("../../services/userStore");
+const { saveUser } = require("../services/userStore");
 const { track } = require("../../services/analytics");
 const { isValidMeterId, isValidAmount } = require("../../services/validators");
 const {

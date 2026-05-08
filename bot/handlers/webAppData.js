@@ -1,4 +1,4 @@
-const { saveUser } = require("../services/userStore");
+const { saveUser, touchUser } = require("../services/userStore");
 const { track } = require("../../services/analytics");
 const { resetSession, getSession } = require("../services/session");
 const { mainKeyboard } = require("../constants");
@@ -64,7 +64,10 @@ function registerWebAppDataHandler(bot) {
         require("../services/userStore").getUser(chatId)?.hostel ??
         null;
 
-      if (ok && meterId && hostel) saveUser(chatId, meterId, hostel);
+      if (ok && meterId && hostel) {
+        saveUser(chatId, meterId, hostel);
+        touchUser(chatId); // update last_seen on successful payment
+      }
 
       resetSession(chatId);
       await ctx.replyWithMarkdown(lines.join("\n"), mainKeyboard);

@@ -17,6 +17,7 @@ db.exec(`
     meter_id  TEXT NOT NULL,
     hostel    TEXT NOT NULL,
     saved_at  INTEGER NOT NULL
+    last_seen INTEGER NOT NULL DEFAULT 0
   )
 `);
 
@@ -39,10 +40,26 @@ function saveUser(chatId, meterId, hostel) {
   ).run(String(chatId), meterId, hostel, Date.now());
 }
 
+function touchUser(chatId) {
+  db.prepare(
+    `
+    UPDATE users SET last_seen = ? WHERE chat_id = ?
+  `,
+  ).run(Date.now(), String(chatId));
+}
+
 function getAllChatIds() {
   return db
     .prepare("SELECT chat_id FROM users")
     .all()
+    .map((r) => r.chat_id);
+}
+
+function getActiveChatIds(windowMs = 30 * 24 * 60 * 60 * 1000) {
+  const cutoff = Date.now() - windowMs;
+  return db
+    .prepare("SELECT chat_id FROM users WHERE last_seen >= ?")
+    .all(cutoff)
     .map((r) => r.chat_id);
 }
 
@@ -71,4 +88,11 @@ function forgetUser(chatId) {
   return result.changes > 0;
 }
 
-module.exports = { saveUser, getUser, forgetUser, getAllChatIds };
+module.exports = {
+  saveUser,
+  getUser,
+  forgetUser,
+  getAllChatIds,
+  getActiveChatIds,
+  touchUser,
+};

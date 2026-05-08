@@ -4,13 +4,9 @@ const { getUser, forgetUser } = require("../services/userStore");
 const { isValidMeterId } = require("../../services/validators");
 const { resetSession, getSession } = require("../services/session");
 const { handleMeterIdLookup } = require("../services/lookup");
-const {
-  handleTopUpStart,
-  startTopUp,
-  getHostelLabel,
-} = require("../services/topup");
+const { handleTopUpStart, getHostelLabel } = require("../services/topup");
 const { sendHelp, SERVER_URL } = require("../services/ui");
-const { state, pendingReplies } = require("../bot");
+const { state } = require("../bot");
 const {
   STAGES,
   HOSTELS,

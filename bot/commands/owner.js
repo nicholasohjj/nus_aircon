@@ -45,6 +45,41 @@ function registerBroadcast(bot) {
   });
 }
 
+function registerAnnounce(bot) {
+  bot.command("announce", async (ctx) => {
+    if (!isOwner(ctx)) return;
+
+    const message = ctx.message?.text?.replace(/^\/announce\s*/, "").trim();
+    if (!message) return ctx.reply("Usage: /announce <message>");
+
+    const chatIds = getActiveChatIds(); // last 30 days
+    if (!chatIds.length)
+      return ctx.reply("No active users in the last 30 days.");
+
+    await ctx.reply(`📡 Announcing to ${chatIds.length} active user(s)…`);
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const chatId of chatIds) {
+      try {
+        await bot.telegram.sendMessage(
+          chatId,
+          `📢 <b>Message from the developer:</b>\n\n${escHtml(message)}`,
+          { parse_mode: "HTML" },
+        );
+        sent++;
+      } catch (err) {
+        if (err.response?.error_code === 403) forgetUser(chatId);
+        failed++;
+      }
+      await new Promise((res) => setTimeout(res, 50));
+    }
+
+    return ctx.reply(`✅ Announce complete. Sent: ${sent}, Failed: ${failed}.`);
+  });
+}
+
 // ── /topupoff / /topupon / /topupstatus ───────────────────────────────────────
 function registerTopupToggle(bot) {
   bot.command("topupoff", async (ctx) => {
@@ -80,6 +115,7 @@ function registerTopupToggle(bot) {
 
 function registerOwnerCommands(bot) {
   registerBroadcast(bot);
+  registerAnnounce(bot);
   registerTopupToggle(bot);
 }
 

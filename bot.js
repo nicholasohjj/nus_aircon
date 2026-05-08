@@ -1255,17 +1255,29 @@ bot.on("text", async (ctx) => {
 (async () => {
   try {
     await setupTelegramUi();
-
-    // clear old webhook if any
     await bot.telegram.deleteWebhook({ drop_pending_updates: true });
 
-    await bot.launch({
-      dropPendingUpdates: true,
-    });
-
-    console.log(
-      `🤖 EVS Telegram bot running... (top-ups ${topupDisabled ? "DISABLED" : "enabled"})`,
-    );
+    // Retry launch up to 5 times with backoff — handles Railway deploy overlap
+    // where the old instance hasn't fully released the polling connection yet.
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        await bot.launch({ dropPendingUpdates: true });
+        console.log(
+          `🤖 EVS Telegram bot running... (top-ups ${topupDisabled ? "DISABLED" : "enabled"})`,
+        );
+        return;
+      } catch (err) {
+        if (err.response?.error_code === 409 && attempt < 5) {
+          const delay = attempt * 3000;
+          console.warn(
+            `⚠️ 409 Conflict on attempt ${attempt}, retrying in ${delay / 1000}s...`,
+          );
+          await new Promise((res) => setTimeout(res, delay));
+        } else {
+          throw err; // non-409, or exhausted all 5 attempts
+        }
+      }
+    }
   } catch (err) {
     console.error("Failed to launch Telegram bot:", err);
     process.exit(1);

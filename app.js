@@ -7,7 +7,7 @@ const cp2nus = require("./routes/cp2nus");
 const cp2 = require("./routes/cp2");
 const { captureException } = require("./services/analytics");
 
-require("./bot");
+require("./bot/index");
 
 const app = express();
 app.use("/assets", express.static("assets"));

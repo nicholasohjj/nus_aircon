@@ -17,6 +17,7 @@
   "dependencies": {
     "axios": "^1.15.0",
     "axios-cookiejar-support": "^6.0.5",
+    "better-sqlite3": "^12.9.0",
     "card-validator": "^10.0.4",
     "cheerio": "^1.2.0",
     "cookie-parser": "^1.4.7",

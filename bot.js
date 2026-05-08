@@ -1,6 +1,8 @@
 require("dotenv").config();
 const { Telegraf, Markup } = require("telegraf");
 const { escHtml } = require("./services/utils");
+const { saveUser, getUser, forgetUser } = require("./services/userStore");
+
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
 const OWNER_CHAT_ID = process.env.OWNER_CHAT_ID; // get this from @userinfobot
@@ -109,11 +111,23 @@ function getSession(chatId) {
   return sessions[chatId]; // always the current, live object
 }
 
+function getHostelLabel(hostel) {
+  return hostel === HOSTELS.CP2NUS
+    ? "UTown Residence / RVRC (cp2nus)"
+    : "PGPR / Houses @ PGP / Residential Colleges / NUS College (cp2)";
+}
+
 /**
  * Shared handler for balance-only and usage lookups.
  * mode: "balance" | "usage"
  */
-async function handleMeterIdLookup(ctx, chatId, text, mode) {
+async function handleMeterIdLookup(
+  ctx,
+  chatId,
+  text,
+  mode,
+  { fromSaved = false } = {},
+) {
   const session = getSession(chatId);
   session.stage = "idle";
 
@@ -153,6 +167,13 @@ async function handleMeterIdLookup(ctx, chatId, text, mode) {
           7,
           text,
         )) || "No usage data available.",
+      );
+    }
+
+    if (fromSaved) {
+      lines.push("");
+      lines.push(
+        `💡 <i>Showing saved meter <code>${text}</code>. Use /forget to change.</i>`,
       );
     }
 
@@ -247,12 +268,49 @@ function parseStar(text) {
 }
 
 function startTopUp(chatId) {
-  const savedMeterId = sessions[chatId]?.txtMtrId; // preserve it
+  const savedInSession = sessions[chatId]?.txtMtrId;
   resetSession(chatId);
   const session = getSession(chatId);
-  session.stage = "awaiting_hostel";
-  if (savedMeterId) session.txtMtrId = savedMeterId;
+
+  // Prefer in-session meter ID (e.g. from deep link), then fall back to DB
+  const dbUser = getUser(chatId);
+  const saved = {
+    meterId: savedInSession ?? dbUser?.meterId ?? null,
+    hostel: dbUser?.hostel ?? null,
+  };
+
+  if (saved?.meterId) session.txtMtrId = saved.meterId;
+  if (saved?.hostel) session.hostel = saved.hostel;
+
+  // If we have both, skip straight to amount
+  session.stage =
+    session.txtMtrId && session.hostel ? "awaiting_amount" : "awaiting_hostel";
+
   return session;
+}
+
+async function handleTopUpStart(ctx, chatId) {
+  const session = startTopUp(chatId);
+
+  if (session.stage === "awaiting_amount") {
+    return ctx.reply(
+      `🔌 Using saved Meter ID: <code>${session.txtMtrId}</code>\n` +
+        `🏠 Hostel: <b>${getHostelLabel(session.hostel)}</b>\n\n` +
+        `Enter the amount in SGD (min $6, max $50), or tap ❌ Cancel to start over.\n\n` +
+        `💡 Use /forget to clear your saved details.`,
+      { parse_mode: "HTML", ...cancelKeyboard },
+    );
+  }
+
+  if (session.txtMtrId) {
+    return ctx.reply(
+      `🔌 Using saved Meter ID: <code>${session.txtMtrId}</code>\n\n` +
+        `🏠 Please select your hostel:`,
+      { parse_mode: "HTML", reply_markup: hostelInlineKeyboard.reply_markup },
+    );
+  }
+
+  return ctx.reply("🏠 Please select your hostel:", hostelInlineKeyboard);
 }
 
 function getWebAppPath(hostel) {
@@ -280,6 +338,7 @@ function helpText() {
     `• /usage — show last 7 days of daily consumption,\n` +
     `  estimated days remaining, and current balance\n` +
     `• /feedback — share feedback or report an issue\n` +
+    `• /forget — clear your saved Meter ID and hostel\n` +
     `• /cancel — cancel the current flow\n` +
     `• /help — show this message`
   );
@@ -294,6 +353,7 @@ async function setupTelegramUi() {
     { command: "topup", description: "Start electricity top-up" },
     { command: "balance", description: "Check meter balance" },
     { command: "usage", description: "Show recent daily usage" },
+    { command: "forget", description: "Clear your saved Meter ID" },
     { command: "feedback", description: "Share feedback or report an issue" },
     { command: "help", description: "Show help and usage" },
     { command: "cancel", description: "Cancel current flow" },
@@ -305,6 +365,14 @@ bot.hears("💰 Balance", async (ctx) => {
   if (!chatId) return;
 
   track("balance_button", { chatId });
+  const saved = getUser(chatId);
+  if (saved?.meterId) {
+    const session = getSession(chatId);
+    session.stage = "idle"; // handleMeterIdLookup sets this itself
+    return handleMeterIdLookup(ctx, chatId, saved.meterId, "balance", {
+      fromSaved: true,
+    });
+  }
 
   const session = getSession(chatId);
   session.stage = "awaiting_meter_id_balance";
@@ -326,6 +394,14 @@ bot.hears("📊 Usage", async (ctx) => {
   if (!chatId) return;
 
   track("usage_button", { chatId });
+  const saved = getUser(chatId);
+  if (saved?.meterId) {
+    const session = getSession(chatId);
+    session.stage = "idle";
+    return handleMeterIdLookup(ctx, chatId, saved.meterId, "usage", {
+      fromSaved: true,
+    });
+  }
 
   const session = getSession(chatId);
   session.stage = "awaiting_meter_id_usage";
@@ -355,8 +431,7 @@ bot.hears("⚡ Top Up", async (ctx) => {
   }
 
   track("topup_button", { chatId });
-  startTopUp(chatId);
-  return ctx.reply("🏠 Please select your hostel:", hostelInlineKeyboard);
+  return handleTopUpStart(ctx, chatId);
 });
 
 // bot.hears("💬 Feedback", async (ctx) => {
@@ -407,7 +482,7 @@ bot.start(async (ctx) => {
 
     return ctx.reply(
       `⚡ EVS Electricity Top-Up\n\n` +
-        `🏠 Hostel: <b>UTown Residence / RVRC (cp2nus)</b>\n` +
+        `🏠 Hostel: <b>${getHostelLabel(HOSTELS.CP2NUS)}</b>\n` +
         `🔌 Meter ID: <code>${meterId}</code>\n\n` +
         `Enter the amount in SGD (e.g. <code>20</code>, min $6, max $50):\n\n` +
         `📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
@@ -421,15 +496,12 @@ bot.start(async (ctx) => {
   if (isValidMeterId(payload)) {
     track("bot_start_deeplink", { chatId, meterId: payload });
 
-    const session = getSession(chatId);
-    session.stage = "awaiting_hostel";
-    session.txtMtrId = payload;
-
-    return ctx.reply(
-      `⚡ EVS Electricity Top-Up\n\nPlease select your hostel:\n\n` +
-        `📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
-      { parse_mode: "HTML", reply_markup: hostelInlineKeyboard.reply_markup },
-    );
+    sessions[chatId] = {
+      stage: "idle",
+      txtMtrId: payload,
+      updatedAt: Date.now(),
+    };
+    return handleTopUpStart(ctx, chatId);
   }
 
   return ctx.reply(
@@ -469,11 +541,34 @@ bot.command("topupstatus", async (ctx) => {
   );
 });
 
+bot.command("forget", async (ctx) => {
+  const chatId = ctx.chat?.id;
+  if (!chatId) return;
+
+  track("forget_command", { chatId });
+  const deleted = forgetUser(chatId);
+  resetSession(chatId);
+
+  return ctx.reply(
+    deleted
+      ? "🗑️ Your saved Meter ID and hostel have been removed.\n\nUse /topup to start a fresh top-up."
+      : "ℹ️ You don't have a saved Meter ID.",
+    mainKeyboard,
+  );
+});
+
 bot.command("balance", async (ctx) => {
   const chatId = ctx.chat?.id;
   if (!chatId) return;
 
   track("balance_command", { chatId });
+  const saved = getUser(chatId);
+  if (saved?.meterId) {
+    getSession(chatId).stage = "idle";
+    return handleMeterIdLookup(ctx, chatId, saved.meterId, "balance", {
+      fromSaved: true,
+    });
+  }
 
   const session = getSession(chatId);
   session.stage = "awaiting_meter_id_balance";
@@ -495,6 +590,13 @@ bot.command("usage", async (ctx) => {
   if (!chatId) return;
 
   track("usage_command", { chatId });
+  const saved = getUser(chatId);
+  if (saved?.meterId) {
+    getSession(chatId).stage = "idle";
+    return handleMeterIdLookup(ctx, chatId, saved.meterId, "usage", {
+      fromSaved: true,
+    });
+  }
 
   const session = getSession(chatId);
   session.stage = "awaiting_meter_id_usage";
@@ -522,8 +624,7 @@ bot.command("topup", async (ctx) => {
   }
 
   track("topup_command", { chatId });
-  startTopUp(chatId);
-  return ctx.reply("🏠 Please select your hostel:", hostelInlineKeyboard);
+  return handleTopUpStart(ctx, chatId);
 });
 
 bot.command("feedback", async (ctx) => {
@@ -684,6 +785,12 @@ bot.on("web_app_data", async (ctx) => {
       status,
     });
 
+    const session = getSession(chatId);
+    const hostel = session?.hostel ?? getUser(chatId)?.hostel ?? null;
+
+    if (ok && meterId && hostel) {
+      saveUser(chatId, meterId, hostel);
+    }
     resetSession(chatId);
     await ctx.replyWithMarkdown(lines.join("\n"), mainKeyboard);
   } catch (err) {
@@ -999,6 +1106,8 @@ bot.on("text", async (ctx) => {
         );
       }
 
+      saveUser(chatId, session.txtMtrId, session.hostel);
+
       const webAppPath = getWebAppPath(session.hostel);
       const webAppUrl =
         `${SERVER_URL}${webAppPath}?txtMtrId=${encodeURIComponent(session.txtMtrId)}` +
@@ -1010,10 +1119,7 @@ bot.on("text", async (ctx) => {
 
       console.log("🌐 WebApp URL =", webAppUrl);
 
-      const hostelLabel =
-        session.hostel === HOSTELS.CP2NUS
-          ? "UTown Residence / RVRC (cp2nus)"
-          : "PGPR / Houses @ PGP / Residential Colleges / NUS College (cp2)";
+      const hostelLabel = getHostelLabel(session.hostel);
 
       if (!isHttpsUrl(SERVER_URL)) {
         track("payment_button_shown", {

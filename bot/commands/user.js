@@ -1,4 +1,3 @@
-const { Markup } = require("telegraf");
 const { track } = require("../../services/analytics");
 const { getUser, forgetUser } = require("../services/userStore");
 const { isValidMeterId } = require("../../services/validators");

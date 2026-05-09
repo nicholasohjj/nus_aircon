@@ -16,7 +16,7 @@ db.exec(`
     chat_id   TEXT PRIMARY KEY,
     meter_id  TEXT NOT NULL,
     hostel    TEXT NOT NULL,
-    saved_at  INTEGER NOT NULL
+    saved_at  INTEGER NOT NULL,
     last_seen INTEGER NOT NULL DEFAULT 0
   )
 `);

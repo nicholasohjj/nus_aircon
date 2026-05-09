@@ -28,6 +28,8 @@ try {
   console.error("Failed to load terms.md:", err.message);
 }
 
+app.get("/health", (req, res) => res.status(200).json({ ok: true }));
+
 app.get("/terms", (req, res) => {
   if (!termsHtml) return res.status(503).send("Terms temporarily unavailable.");
   res.send(termsHtml);

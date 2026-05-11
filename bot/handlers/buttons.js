@@ -92,7 +92,10 @@ function registerButtonHandlers(bot) {
   // ── ❌ Cancel ───────────────────────────────────────────────────────────────
   bot.hears("❌ Cancel", async (ctx) => {
     const chatId = ctx.chat?.id;
-    if (chatId) resetSession(chatId);
+    if (chatId) {
+      track("topup_cancelled", { chatId });
+      resetSession(chatId);
+    }
     return ctx.reply(
       "❌ Top-up cancelled. Use /topup to start again.",
       mainKeyboard,

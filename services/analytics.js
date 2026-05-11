@@ -47,6 +47,15 @@ function captureException(error, distinctId = "anonymous", properties = {}) {
   posthog.captureException(error, String(distinctId), properties);
 }
 
+function identify(distinctId, properties = {}) {
+  if (!posthog) return;
+
+  posthog.identify({
+    distinctId: String(distinctId),
+    properties,
+  });
+}
+
 async function shutdownAnalytics() {
   if (posthog) {
     await posthog.shutdown();
@@ -56,6 +65,7 @@ async function shutdownAnalytics() {
 module.exports = {
   track,
   captureException,
+  identify,
   shutdownAnalytics,
   IS_LOCAL,
 };

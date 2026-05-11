@@ -1,50 +1,50 @@
 <wizard-report>
 # PostHog post-wizard report
 
-The wizard has completed a deep integration of your project. PostHog was already comprehensively instrumented across `services/analytics.js`, `bot.js`, `routes/cp2.js`, and `routes/cp2nus.js`. The integration covers the full top-up funnel, bot command engagement, error capture via `captureException`, and graceful SDK shutdown on SIGINT/SIGTERM. Environment variables `POSTHOG_API_KEY` and `POSTHOG_HOST` were verified and updated in `.env`.
+The wizard has completed a deep integration of your project. The project already had extensive PostHog event tracking in place. This session added three supplemental capabilities:
 
-| Event                             | Description                                                         | File                                |
-| --------------------------------- | ------------------------------------------------------------------- | ----------------------------------- |
-| `bot_start`                       | User starts the bot via /start (no deeplink)                        | `bot.js`                            |
-| `bot_start_deeplink`              | User starts bot via deeplink with meter ID or hostel prefix         | `bot.js`                            |
-| `topup_button`                    | User taps the Top Up keyboard button                                | `bot.js`                            |
-| `topup_command`                   | User issues the /topup command                                      | `bot.js`                            |
-| `topup_disabled_button`           | User taps Top Up while top-ups are disabled                         | `bot.js`                            |
-| `topup_disabled_command`          | User issues /topup command while top-ups are disabled               | `bot.js`                            |
-| `topup_disabled_deeplink`         | User arrives via deeplink while top-ups are disabled                | `bot.js`                            |
-| `topup_disabled_existing_session` | User is mid-flow when top-ups get disabled                          | `bot.js`                            |
-| `hostel_selected`                 | User selects a hostel (cp2 or cp2nus) during top-up flow            | `bot.js`                            |
-| `amount_accepted`                 | User enters a valid top-up amount; payment button about to be shown | `bot.js`                            |
-| `payment_button_shown`            | Payment button (or fallback URL) sent to the user                   | `bot.js`                            |
-| `miniapp_closed_success`          | Telegram mini-app reports a successful top-up on close              | `bot.js`                            |
-| `miniapp_closed_failed`           | Telegram mini-app reports a failed top-up on close                  | `bot.js`                            |
-| `balance_button`                  | User taps the Balance keyboard button                               | `bot.js`                            |
-| `balance_command`                 | User issues the /balance command                                    | `bot.js`                            |
-| `balance_error`                   | Error occurred while fetching meter balance                         | `bot.js`                            |
-| `usage_button`                    | User taps the Usage keyboard button                                 | `bot.js`                            |
-| `usage_command`                   | User issues the /usage command                                      | `bot.js`                            |
-| `usage_error`                     | Error occurred while fetching usage history                         | `bot.js`                            |
-| `prefill_usage_error`             | Error prefilling meter usage during meter ID validation             | `bot.js`                            |
-| `feedback_command`                | User issues the /feedback command                                   | `bot.js`                            |
-| `feedback_submitted`              | User submits feedback with a star rating and optional message       | `bot.js`                            |
-| `webapp_opened`                   | User opens the payment web app                                      | `routes/cp2.js`, `routes/cp2nus.js` |
-| `bootstrap_started`               | Server begins the EVS purchase flow bootstrap                       | `routes/cp2.js`, `routes/cp2nus.js` |
-| `bootstrap_succeeded`             | Bootstrap completed successfully; payment session created           | `routes/cp2.js`, `routes/cp2nus.js` |
-| `bootstrap_failed`                | Bootstrap failed (invalid meter ID, bad amount, or upstream error)  | `routes/cp2.js`, `routes/cp2nus.js` |
-| `payment_attempted`               | User submits card details; eNETS payment request being sent         | `routes/cp2.js`, `routes/cp2nus.js` |
-| `payment_completed`               | Payment confirmed as successful by EVS/eNETS                        | `routes/cp2.js`, `routes/cp2nus.js` |
-| `payment_failed`                  | Payment confirmed as failed by EVS/eNETS                            | `routes/cp2.js`, `routes/cp2nus.js` |
+1. **User identification** — Added an `identify()` helper to `services/analytics.js` that calls `posthog.identify()` to set person profiles. Called in `bot/handlers/webAppData.js` after a successful payment, persisting `hostel`, `meterId`, and `last_payment_at` as person properties.
+
+2. **Top-up toggle tracking** — Added `topup_toggled` event to `bot/commands/owner.js` when the owner runs `/topupon` or `/topupoff`, including an `enabled` boolean so maintenance windows can be correlated with payment drops.
+
+3. **Cancellation tracking** — Added `topup_cancelled` event to `bot/handlers/buttons.js` when users tap the Cancel button, enabling funnel drop-off analysis.
+
+Environment variables `POSTHOG_API_KEY` and `POSTHOG_HOST` were confirmed and updated in `.env`.
+
+| Event                                                                                     | Description                                                                     | File                                |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------- |
+| `identify` (new helper)                                                                   | Sets person properties (hostel, meterId, last_payment_at) on successful payment | `services/analytics.js`             |
+| identify call                                                                             | Called on successful miniapp payment closure                                    | `bot/handlers/webAppData.js`        |
+| `topup_toggled`                                                                           | Owner enabled or disabled top-ups via /topupon or /topupoff                     | `bot/commands/owner.js`             |
+| `topup_cancelled`                                                                         | User tapped Cancel button during top-up flow                                    | `bot/handlers/buttons.js`           |
+| `webapp_opened`                                                                           | User opens the payment web app                                                  | `routes/cp2.js`, `routes/cp2nus.js` |
+| `bootstrap_started`                                                                       | Server begins the EVS purchase flow bootstrap                                   | `routes/cp2.js`, `routes/cp2nus.js` |
+| `bootstrap_succeeded`                                                                     | Bootstrap completed successfully; payment session created                       | `routes/cp2.js`, `routes/cp2nus.js` |
+| `bootstrap_failed`                                                                        | Bootstrap failed (invalid meter ID, bad amount, or upstream error)              | `routes/cp2.js`, `routes/cp2nus.js` |
+| `payment_attempted`                                                                       | User submits card details; eNETS payment request being sent                     | `routes/cp2.js`, `routes/cp2nus.js` |
+| `payment_completed`                                                                       | Payment confirmed as successful by EVS/eNETS                                    | `routes/cp2.js`, `routes/cp2nus.js` |
+| `payment_failed`                                                                          | Payment confirmed as failed by EVS/eNETS                                        | `routes/cp2.js`, `routes/cp2nus.js` |
+| `miniapp_closed_success`                                                                  | Telegram mini-app reports a successful top-up on close                          | `bot/handlers/webAppData.js`        |
+| `miniapp_closed_failed`                                                                   | Telegram mini-app reports a failed top-up on close                              | `bot/handlers/webAppData.js`        |
+| `bot_start`, `bot_start_deeplink`                                                         | User starts the bot                                                             | `bot/commands/user.js`              |
+| `topup_command`, `balance_command`, `usage_command`, `forget_command`, `feedback_command` | User issues bot commands                                                        | `bot/commands/user.js`              |
+| `feedback_submitted`                                                                      | User submits feedback with a star rating                                        | `bot/handlers/text.js`              |
+| `amount_accepted`, `payment_button_shown`                                                 | Amount entered and payment button shown                                         | `bot/handlers/text.js`              |
+| `topup_button`, `balance_button`, `usage_button`                                          | User taps keyboard buttons                                                      | `bot/handlers/buttons.js`           |
+| `hostel_selected`                                                                         | User selects a hostel during top-up flow                                        | `bot/handlers/actions.js`           |
+| `topup_disabled_*`                                                                        | Various disabled top-up events                                                  | Multiple files                      |
+| `prefill_usage_error`                                                                     | Error prefilling meter usage during validation                                  | `bot/handlers/text.js`              |
 
 ## Next steps
 
-We've built some insights and a dashboard for you to keep an eye on user behavior, based on the events instrumented:
+We've built some insights and a dashboard for you to keep an eye on user behavior, based on the events we just instrumented:
 
-- **Dashboard - Analytics basics**: https://eu.posthog.com/project/165245/dashboard/667693
-- **Top-Up Conversion Funnel** (topup_button -> hostel_selected -> amount_accepted -> payment_attempted -> payment_completed): https://eu.posthog.com/project/165245/insights/aXYl4v9A
-- **Payment Success vs Failure Rate** (daily trend of completed vs failed payments): https://eu.posthog.com/project/165245/insights/4VHpgELt
-- **Daily Active Users** (bot_start, topup_button, balance_button unique users per day): https://eu.posthog.com/project/165245/insights/gwzPI8NR
-- **Bootstrap Success vs Failure** (upstream EVS/eNETS reliability monitor): https://eu.posthog.com/project/165245/insights/KqpsxifB
-- **Top Feature Usage** (weekly bar chart of top-up, balance, usage, and feedback): https://eu.posthog.com/project/165245/insights/lYgEOFk1
+- **Dashboard — Analytics basics**: https://eu.posthog.com/project/165245/dashboard/672807
+- **Payment Conversion Funnel** (webapp open → bootstrap → payment attempt → payment complete): https://eu.posthog.com/project/165245/insights/kTlIpMvu
+- **Payment Outcomes Over Time** (completed vs failed daily trend): https://eu.posthog.com/project/165245/insights/cOed9rmE
+- **Bootstrap Success vs Failure** (meter lookup + eNETS setup reliability): https://eu.posthog.com/project/165245/insights/336eG07I
+- **Churn Signals** (cancellations + disabled top-up encounters): https://eu.posthog.com/project/165245/insights/nnExAAVY
+- **Bot User Engagement** (DAU across start, top-up, balance, feedback): https://eu.posthog.com/project/165245/insights/21YPTLza
 
 ### Agent skill
 

@@ -1,5 +1,5 @@
 const { saveUser, touchUser } = require("../services/userStore");
-const { track } = require("../../services/analytics");
+const { track, identify } = require("../../services/analytics");
 const { resetSession, getSession } = require("../services/session");
 const { mainKeyboard } = require("../constants");
 const { lowBalanceWarning } = require("../services/lookup");
@@ -67,6 +67,11 @@ function registerWebAppDataHandler(bot) {
       if (ok && meterId && hostel) {
         saveUser(chatId, meterId, hostel);
         touchUser(chatId); // update last_seen on successful payment
+        identify(chatId, {
+          hostel,
+          meterId,
+          last_payment_at: new Date().toISOString(),
+        });
       }
 
       resetSession(chatId);

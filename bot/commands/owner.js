@@ -5,6 +5,7 @@ const {
   forgetUser,
 } = require("../services/userStore");
 const { state } = require("../bot");
+const { track } = require("../../services/analytics");
 
 const OWNER_CHAT_ID = process.env.OWNER_CHAT_ID;
 
@@ -89,6 +90,7 @@ function registerTopupToggle(bot) {
   bot.command("topupoff", async (ctx) => {
     if (!isOwner(ctx)) return;
     state.topupDisabled = true;
+    track("topup_toggled", { chatId: ctx.chat?.id, enabled: false });
     console.log("⛔ Top-ups disabled by owner via /topupoff");
     return ctx.reply(
       "⛔ Top-ups are now *disabled*. Users will see the maintenance message.\n\nUse /topupon to re-enable.",
@@ -99,6 +101,7 @@ function registerTopupToggle(bot) {
   bot.command("topupon", async (ctx) => {
     if (!isOwner(ctx)) return;
     state.topupDisabled = false;
+    track("topup_toggled", { chatId: ctx.chat?.id, enabled: true });
     console.log("✅ Top-ups enabled by owner via /topupon");
     return ctx.reply(
       "✅ Top-ups are now *enabled*. Users can top up again.\n\nUse /topupoff to disable.",

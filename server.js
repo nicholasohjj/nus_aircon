@@ -6,6 +6,10 @@ const express = require("express");
 const cp2nus = require("./routes/cp2nus");
 const cp2 = require("./routes/cp2");
 const { captureException } = require("./services/analytics");
+const swaggerUi = require("swagger-ui-express");
+const YAML = require("yamljs");
+
+const openapiSpec = YAML.load(path.join(__dirname, "docs/openapi.yaml"));
 
 require("./bot/index");
 
@@ -43,6 +47,8 @@ app.get("/terms", (req, res) => {
 if (process.env.NODE_ENV !== "production") {
   app.get("/debug", (req, res) => res.send("cp2nus prefix reachable"));
 }
+app.use("/api", swaggerUi.serve, swaggerUi.setup(openapiSpec));
+
 app.use("/cp2nus", cp2nus);
 app.use("/", cp2);
 

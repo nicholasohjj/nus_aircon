@@ -1,0 +1,140 @@
+openapi: 3.0.3
+info:
+  title: NUSAirCon API
+  version: 1.0.0
+  description: API documentation for EVS top-up WebApp routes.
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: App is running
+
+  /terms:
+    get:
+      summary: Terms of Use page
+      responses:
+        "200":
+          description: Returns rendered Terms of Use HTML
+        "503":
+          description: Terms unavailable
+
+  /cp2nus/webapp/bootstrap:
+    get:
+      summary: Start cp2nus payment bootstrap
+      parameters:
+        - name: txtMtrId
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "10000000"
+        - name: txtAmount
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "10.00"
+        - name: chatId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Bootstrap successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  redirectUrl:
+                    type: string
+                    example: /cp2nus/webapp/pay?token=abc123
+        "400":
+          description: Invalid input
+        "500":
+          description: Bootstrap failed
+
+  /cp2nus/webapp/session:
+    get:
+      summary: Get cp2nus payment session
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session details
+        "400":
+          description: Session expired
+
+  /cp2nus/webapp/enets_pay:
+    post:
+      summary: Submit cp2nus encrypted eNETS payment form
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - token
+                - enc
+                - netsMid
+                - merchantTxnRef
+              properties:
+                token:
+                  type: string
+                enc:
+                  type: string
+                netsMid:
+                  type: string
+                netsTxnRef:
+                  type: string
+                merchantTxnRef:
+                  type: string
+                txnRand:
+                  type: string
+                name:
+                  type: string
+                expiryMonth:
+                  type: string
+                expiryYear:
+                  type: string
+      responses:
+        "200":
+          description: Payment processed
+        "400":
+          description: Missing or invalid fields
+        "500":
+          description: Payment error
+
+  /cp2nus/webapp/notify:
+    post:
+      summary: Notify Telegram chat about transaction result
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Notification accepted

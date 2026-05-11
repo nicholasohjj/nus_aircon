@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card, DetailRow, Logo } from "../components/Card";
 import styles from "./LoadingPage.module.css";
 
@@ -27,12 +28,12 @@ export default function LoadingPage({ basePath = "" }) {
   useTelegram();
 
   // Pull params from the query string — server still drives navigation to this page
-  const params = new URLSearchParams(window.location.search);
-  const meterId = params.get("txtMtrId") || "";
-  const amount = params.get("txtAmount") || "";
-  const chatId = params.get("chatId") || "";
-  const address = params.get("address") || null;
-  const balance = params.get("balance") != null ? params.get("balance") : null;
+  const [searchParams] = useSearchParams();
+  const meterId = searchParams.get("txtMtrId") || "";
+  const amount = searchParams.get("txtAmount") || "";
+  const chatId = searchParams.get("chatId") || "";
+  const address = searchParams.get("address") || null;
+  const balance = searchParams.get("balance") || null;
 
   const amtDisplay = Number(amount).toFixed(2);
   const balDisplay =

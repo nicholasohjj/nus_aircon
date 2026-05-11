@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import HomePage from "./pages/HomePage";
 import LoadingPage from "./pages/LoadingPage";
 import CardPaymentPage from "./pages/CardPaymentPage";
 import ResultPage from "./pages/ResultPage";
@@ -7,10 +8,15 @@ export default function App() {
   return (
     <BrowserRouter basename="/app">
       <Routes>
+        {/* Entry point — hostel selection + meter details */}
+        <Route path="/" element={<HomePage />} />
+
+        {/* cp2 flow — PGPR, PGP Houses, Residential Colleges, NUS College */}
         <Route path="/loading" element={<LoadingPage basePath="" />} />
         <Route path="/pay" element={<CardPaymentPage basePath="" />} />
         <Route path="/result" element={<ResultPage basePath="" />} />
 
+        {/* cp2nus flow — UTown Residence, RVRC */}
         <Route
           path="/cp2nus/loading"
           element={<LoadingPage basePath="/cp2nus" />}
@@ -23,7 +29,6 @@ export default function App() {
           path="/cp2nus/result"
           element={<ResultPage basePath="/cp2nus" />}
         />
-        <Route path="*" element={<Navigate to="/loading" replace />} />
       </Routes>
     </BrowserRouter>
   );

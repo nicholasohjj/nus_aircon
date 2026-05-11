@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card, Logo } from "../components/Card";
 import { detectCardBrand, formatCardNumber } from "../lib/cardBrand";
 import { validateCardForm } from "../lib/validation";
@@ -43,7 +44,9 @@ function Input({ id, inputRef, error, ...props }) {
 export default function CardPaymentPage({ basePath = "" }) {
   useTelegram();
 
-  const token = new URLSearchParams(window.location.search).get("token") || "";
+  const [searchParams] = useSearchParams();
+
+  const token = searchParams.get("token") || "";
 
   const initialLoadErr = token
     ? null

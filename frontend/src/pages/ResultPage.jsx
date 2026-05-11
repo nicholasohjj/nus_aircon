@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import styles from "./ResultPage.module.css";
 
 function useTelegram() {
@@ -27,8 +28,8 @@ function DetailRow({ label, value }) {
 export default function ResultPage({ basePath = "" }) {
   useTelegram();
 
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get("token") || "";
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token") || "";
   const initialErr = token ? null : "Missing result token.";
 
   const [session, setSession] = useState(null);

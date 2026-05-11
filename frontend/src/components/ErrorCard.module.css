@@ -11,6 +11,24 @@
   line-height: 1.5;
 }
 
+@media (min-width: 640px) {
+  .errorCard {
+    padding: 18px;
+    margin-top: 24px;
+    font-size: 0.86rem;
+    border-radius: 13px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .errorCard {
+    padding: 20px;
+    margin-top: 28px;
+    font-size: 0.875rem;
+    border-radius: 14px;
+  }
+}
+
 .retryBtn {
   margin-top: 16px;
   background: var(--accent);
@@ -23,4 +41,27 @@
   font-size: 0.9rem;
   cursor: pointer;
   width: 100%;
+  transition: opacity 0.15s;
+}
+
+@media (min-width: 640px) {
+  .retryBtn {
+    margin-top: 18px;
+    padding: 13px 24px;
+    font-size: 0.925rem;
+    border-radius: 11px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .retryBtn {
+    margin-top: 20px;
+    padding: 14px 24px;
+    font-size: 0.95rem;
+    border-radius: 12px;
+  }
+}
+
+.retryBtn:hover {
+  opacity: 0.88;
 }

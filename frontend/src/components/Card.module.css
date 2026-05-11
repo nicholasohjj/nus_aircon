@@ -1,11 +1,48 @@
+/* ── Shared card shell ────────────────────────────────────────────────────── */
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 32px 28px;
+  border-radius: var(--card-radius, 16px);
+  padding: var(--card-padding, 28px 24px);
   width: 100%;
-  max-width: 400px;
+  max-width: var(--card-max-width, 400px);
 }
+
+/* ── Logo ───────────────────────────────────────────────────────────────────── */
+
+.logo {
+  width: 48px;
+  height: 48px;
+  background: var(--accent-dim);
+  border: 1.5px solid var(--accent);
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  font-size: 22px;
+}
+
+@media (min-width: 640px) {
+  .logo {
+    width: 54px;
+    height: 54px;
+    font-size: 26px;
+    margin-bottom: 26px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .logo {
+    width: 60px;
+    height: 60px;
+    font-size: 28px;
+    margin-bottom: 28px;
+  }
+}
+
+/* ── Detail rows ────────────────────────────────────────────────────────────── */
 
 .detailRow {
   display: flex;
@@ -15,6 +52,20 @@
   border-bottom: 1px solid var(--border);
   font-size: 0.875rem;
   gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .detailRow {
+    padding: 12px 0;
+    font-size: 0.9rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .detailRow {
+    padding: 14px 0;
+    font-size: 0.95rem;
+  }
 }
 
 .detailRow:last-of-type {
@@ -33,17 +84,4 @@
   text-align: right;
   word-break: break-word;
   max-width: 58%;
-}
-
-.logo {
-  width: 52px;
-  height: 52px;
-  background: var(--accent-dim);
-  border: 1.5px solid var(--accent);
-  border-radius: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 24px;
-  font-size: 24px;
 }

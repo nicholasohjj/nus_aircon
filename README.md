@@ -1,6 +1,6 @@
-# EVS Electricity Top-Up Bot
+# EVS Electricity Top-Up
 
-A Telegram bot and Express web server that lets NUS hostel residents top up their EVS electricity meters via credit card, without needing to visit a physical terminal.
+A Telegram bot and web app that lets NUS hostel residents top up their EVS electricity meters via credit card, without needing to visit a physical terminal.
 
 ## Supported Hostels
 
@@ -13,27 +13,39 @@ A Telegram bot and Express web server that lets NUS hostel residents top up thei
 
 - Check meter balance and 7-day usage history from within Telegram
 - Top up electricity via credit card (SGD $6–$50)
-- RSA-encrypted card entry in a Telegram WebApp (Mini App)
+- RSA-encrypted card entry — card details never leave the browser in plaintext
+- Works as a Telegram Mini App and as a standalone website
 - Cross-system guard: cp2nus bootstrap rejects meters that belong to the cp2 system before initiating payment
 - Analytics tracking and error capture throughout the flow
 
 ## Architecture
 
 ```
-Telegram Bot (telegraf)
-    │
-    ├── /topup   → hostel selection → meter ID → amount → WebApp
-    ├── /balance → meter ID → balance lookup
-    └── /usage   → meter ID → 7-day usage
+Telegram Bot (telegraf)          Website (React, /app/)
+    │                                │
+    ├── /topup                       └── HomePage
+    ├── /balance                          └── hostel selection
+    └── /usage                                + meter ID + amount
+          │                                       │
+          ▼                                       ▼
+    Express (server.js)  ←────────────────────────────
           │
-          ▼
-    Telegram WebApp (Express routes, mounted per hostel)
-          │
-          ├── GET  /webapp              — loading page; fetches meter summary from ORE
-          ├── GET  /webapp/bootstrap    — runs full payment init, returns redirect URL
-          ├── GET  /webapp/pay          — card entry page (RSA encryption in browser)
+          ├── GET  /webapp              — fetches meter summary, redirects to React
+          ├── GET  /webapp/bootstrap    — runs full payment init, returns token
+          ├── GET  /webapp/session      — returns session data as JSON for React
+          ├── GET  /webapp/pay          — redirects to React card entry page
           ├── POST /webapp/enets_pay    — proxies encrypted card data to eNETS
-          └── GET  /webapp/result       — final success/failure page
+          ├── POST /webapp/notify       — sends payment result to Telegram chat
+          └── GET  /webapp/result       — redirects to React result page
+
+    React Frontend (/app/)
+          ├── /                 — HomePage (hostel + meter ID + amount)
+          ├── /loading          — LoadingPage (calls /webapp/bootstrap)
+          ├── /pay              — CardPaymentPage (RSA encryption + submit)
+          ├── /result           — ResultPage (outcome from server session)
+          ├── /cp2nus/loading   — cp2nus variant
+          ├── /cp2nus/pay       — cp2nus variant
+          └── /cp2nus/result    — cp2nus variant
 ```
 
 ## Payment Flows
@@ -42,39 +54,41 @@ Telegram Bot (telegraf)
 
 Scrapes the EVS WebPOS portal to create a transaction, then proxies through eNETS.
 
-1. **Loading page** — fetches meter address and balance from ORE in a single `getMeterSummary` call
-2. **Bootstrap** (`/webapp/bootstrap`) — runs `runPurchaseFlow` and `getMeterSummary` in parallel via `Promise.all`:
+1. **`/webapp`** — fetches meter address and balance from ORE, redirects to React loading page with address/balance in query params
+2. **Bootstrap** (`/webapp/bootstrap`) — runs `runPurchaseFlow` and `getMeterSummary` in parallel:
    - `GET /EVSWebPOS/` → login → `POST /loginServlet` (meter validation)
    - `POST /selectOfferServlet` (amount selection)
-   - `GET /paymentServlet` → extract `merchant_txn_ref` (follows redirects via custom `getFollowRedirects`)
-   - `POST creditpayment.jsp` (120.50.44.233) → extract eNETS `message`
+   - `GET /paymentServlet` → extract `merchant_txn_ref`
+   - `POST creditpayment.jsp` → extract eNETS `message`
    - `POST /enets2/PaymentListener.do` → extract RSA public key (`n`, `e`), `netsMid`, `netsTxnRef`
-3. **Card page** (`/webapp/pay`) — loads RSA scripts from `www.enets.sg`; encrypts `cardNo + cvv` client-side
+   - Creates a payment session (10-min TTL), redirects to React card page
+3. **Card page** (`/app/pay`) — React component; fetches session via `/webapp/session`; encrypts `cardNo + cvv` with eNETS RSA scripts client-side
 4. **Payment proxy** (`/webapp/enets_pay`):
    - `POST https://www.enets.sg/GW2/uCredit/pay`
-   - **Preferred path:** extracts EVS callback form from eNETS response HTML → `POST /EVSWebPOS/transSumServlet?status=&id=` → `parseEvsTransactionSummary`
+   - **Preferred path:** extracts EVS callback form → `POST /EVSWebPOS/transSumServlet` → `parseEvsTransactionSummary`
    - **Fallback:** `parseEnetsResult` scrapes the eNETS receipt HTML directly
-5. **Result page** — client-side redirect to `/webapp/result`
+   - Writes outcome (`status`, `merchantTxnRef`, `reason`) back to the server-side session
+5. **Result page** (`/app/result`) — React component; reads outcome from server session via `/webapp/session`
 
 ### CP2NUS — UTown Residence / RVRC
 
 Uses the EVS JSON API and the eNETS Payment Page (enetspp) host directly.
 
-1. **Loading page** — fetches meter address and balance from ORE via `getMeterSummary`
-2. **Bootstrap** (`/webapp/bootstrap`) — `runBootstrap` runs sequentially:
-   - **Meter system check** — `isCp2Meter()` guard: if the meter belongs to the cp2 system, returns `WRONG_SYSTEM` error immediately
-   - **`init_pay`** — `POST /enets/init_pay` to EVS API → `{ txn_identifier, req, sign }`
-   - **`meter_info`** — `getMeterSummary` → `buildPayDisplayAddress` (formats block/level/unit/building)
-   - **`enetspp_pay`** — `buildEnetsPayUrl` base64-encodes `m/a/d/t/s` → `GET enetspp/pay?p=…` → extract `txnReq`, `keyId`, `hmac`
-   - **`TxnReqListener`** — `POST /GW2/TxnReqListener` with `txnReq` JSON → returns RSA key, `netsTxnRef`, `netsMid` (top-level `UMID_xxx`), `paymtNetsMid` (acquiring MID from `paymtSvcInfoList[0]`), `txnRand`, `keyId`, `hmac`
-3. **Card page** (`/webapp/pay`) — same RSA encryption as cp2; `paymtNetsMid` (not top-level `netsMid`) is passed to `panSubmitForm`; `expiryYear` passed as 4-digit string
-4. **Payment proxy** (`/webapp/enets_pay`):
-   - `GET /GW2/pluginpages/env.jsp` → seed `JSESSIONID` (`fetchEnvJsp`)
-   - `POST /GW2/credit/init;jsessionid=…` with `paymentMode=CC_1, routeTo=FEH` (`callCreditInit`)
-   - `POST /GW2/credit/panSubmitForm` with encrypted card data (`submitPanForm`)
-   - **Preferred path:** `panSubmitForm` response message contains `netsTxnStatus` → `preParsed` result returned immediately (no b2s call needed)
-   - **Fallback:** `POST /enets/b2s` (or action URL from `post_form`) → 303 redirect to `/pay_result?r=&t=&a=&x=&s=&m=` → `parsePayResult` base64-decodes all params
-5. **Result page** — client-side redirect to `/webapp/result`
+1. **`/webapp`** — same as cp2; fetches meter info, redirects to `/app/cp2nus/loading`
+2. **Bootstrap** (`/cp2nus/webapp/bootstrap`) — `runBootstrap` runs sequentially:
+   - **Meter system check** — `isCp2Meter()` guard: rejects cp2 meters immediately
+   - **`init_pay`** — `POST /enets/init_pay` → `{ txn_identifier, req, sign }`
+   - **`meter_info`** — `getMeterSummary` → `buildPayDisplayAddress`
+   - **`enetspp_pay`** — `buildEnetsPayUrl` → `GET enetspp/pay?p=…` → extract `txnReq`, `keyId`, `hmac`
+   - **`TxnReqListener`** — `POST /GW2/TxnReqListener` → RSA key, `netsTxnRef`, `netsMid`, `paymtNetsMid`, `txnRand`, `keyId`, `hmac`
+3. **Card page** (`/app/cp2nus/pay`) — same RSA encryption; `paymtNetsMid` (acquiring MID) used in `panSubmitForm`, not top-level `netsMid`
+4. **Payment proxy** (`/cp2nus/webapp/enets_pay`):
+   - `GET /GW2/pluginpages/env.jsp` → seed `JSESSIONID`
+   - `POST /GW2/credit/init;jsessionid=…`
+   - `POST /GW2/credit/panSubmitForm`
+   - **Preferred path:** `netsTxnStatus` in response → `preParsed` result (no b2s call)
+   - **Fallback:** `POST /enets/b2s` → 303 redirect → `parsePayResult` base64-decodes params
+5. **Result page** (`/app/cp2nus/result`) — reads outcome from server session
 
 ## Setup
 
@@ -87,7 +101,11 @@ Uses the EVS JSON API and the eNETS Payment Page (enetspp) host directly.
 ### Installation
 
 ```bash
+# Install backend dependencies
 npm install
+
+# Install and build the frontend
+npm run build:frontend
 ```
 
 ### Environment Variables
@@ -97,16 +115,33 @@ Create a `.env` file:
 ```env
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 SERVER_URL=https://your-public-server.example.com
-OWNER_CHAT_ID=your_telegram_chat_id   # receives feedback notifications; enables owner reply feature
+OWNER_CHAT_ID=your_telegram_chat_id   # receives feedback notifications
 ```
 
-`SERVER_URL` must be HTTPS for the Telegram WebApp payment button to work. If it is HTTP, the bot falls back to sending a plain browser link instead.
+`SERVER_URL` must be HTTPS for the Telegram WebApp payment button to work. If it is HTTP, the bot falls back to a plain browser link instead.
 
 ### Running
 
 ```bash
-node bot.js      # Telegram bot (long-polling)
-node server.js   # Express web server
+# Development (two terminals)
+npm run dev            # Express backend on :3000
+npm run dev:frontend   # Vite dev server on :5173
+
+# Production
+npm run build:frontend
+npm start
+```
+
+The frontend is served at `/app/` by Express in production. In development, Vite proxies `/webapp` and `/cp2nus` to the backend.
+
+### Testing
+
+```bash
+# Backend tests
+npm test
+
+# Frontend tests
+cd frontend && npm test
 ```
 
 ## Bot Commands
@@ -123,47 +158,66 @@ node server.js   # Express web server
 
 ## Bot Session Flow
 
-Sessions are stored in-memory with a **15-minute TTL**. All incoming text messages for a given chat are serialized through a per-chat `withChatLock` promise chain to prevent race conditions from rapid input. The top-up flow stages are:
+Sessions are stored in-memory with a **15-minute TTL**. All messages for a given chat are serialised through a per-chat lock to prevent race conditions. The top-up flow stages are:
 
 ```
 idle
-  → awaiting_hostel      (hostel keyboard: cp2 / cp2nus)
-  → awaiting_meter_id    (8-digit meter ID + prefetch balance & 7-day usage)
+  → awaiting_hostel      (cp2 / cp2nus keyboard)
+  → awaiting_meter_id    (8-digit ID; prefetches balance + 7-day usage)
   → awaiting_amount      ($6–$50 SGD)
-  → awaiting_payment     (WebApp Pay button shown; re-prompts if user sends text)
-  → idle                 (reset after WebApp closes via web_app_data)
+  → awaiting_payment     (WebApp Pay button; re-prompts on text)
+  → idle                 (reset after WebApp closes)
 ```
 
-The `/balance` and `/usage` commands use their own single-step stages (`awaiting_meter_id_balance`, `awaiting_meter_id_usage`) that return to idle after one response. The `/feedback` command uses `awaiting_feedback_rating` → `awaiting_feedback_text`, then notifies `OWNER_CHAT_ID`.
+`/balance` and `/usage` use single-step stages that return to idle after one response. `/feedback` uses `awaiting_feedback_rating` → `awaiting_feedback_text`, then notifies `OWNER_CHAT_ID`.
+
+## Payment Session
+
+Payment sessions (created by `/webapp/bootstrap`) are stored in-memory with a **10-minute TTL**, separate from bot sessions. The session holds the meter ID, amount, address, balance, eNETS keys, and the payment outcome once complete. The React frontend reads outcome data from the session via `GET /webapp/session?token=` — query params are never trusted for payment results.
 
 ## Owner Reply Threading
 
-When a user submits feedback, the bot forwards a notification to `OWNER_CHAT_ID`. The owner can reply directly to that notification message in Telegram and the bot will forward the reply to the original user. The user can then reply back to the bot's forwarded message, creating a two-way thread — all routed via the in-memory `pendingReplies` map (7-day TTL).
+When a user submits feedback, the bot forwards a notification to `OWNER_CHAT_ID`. The owner can reply directly to that message and the bot forwards the reply back to the user. Replies are routed via an in-memory `pendingReplies` map (7-day TTL).
 
 ## Project Structure
 
 ```
-├── bot.js                    # Telegram bot (Telegraf, long-polling)
-├── server.js                 # Express app entry point
+├── server.js                        # Express entry point; serves React at /app/
 ├── routes/
-│   ├── cp2.js                # WebApp routes for cp2 (PGPR / PGP / RC / NUSC)
-│   └── cp2nus.js             # WebApp routes for cp2nus (UTown / RVRC)
-├── views/
-│   ├── cp2.js                # HTML page templates for cp2
-│   └── cp2nus.js             # HTML page templates for cp2nus
-└── services/
-    ├── cp2Service.js         # Purchase flow: EVS WebPOS scraping + eNETS proxy
-    ├── cp2nusService.js      # Purchase flow: EVS JSON API + eNETS PP + NETS API
-    ├── ore.js                # ORE API: meter summary and 7-day usage
-    ├── utils.js              # HTML parsing helpers, result normalisation, XSS escaping
-    ├── validators.js         # Meter ID and amount validation; isCp2Meter check
-    ├── config.js             # Base URLs and shared HTTP headers
-    └── analytics.js          # Event tracking and exception capture
+│   ├── cp2.js                    # WebApp + API routes for cp2
+│   └── cp2nus.js                 # WebApp + API routes for cp2nus
+├── services/
+│   ├── cp2Service.js             # Purchase flow: EVS WebPOS scraping + eNETS proxy
+│   ├── cp2nusService.js          # Purchase flow: EVS JSON API + eNETS PP + NETS API
+│   ├── errorPage.js              # Shared HTML error page for Express error responses
+│   ├── ore.js                    # ORE API: meter summary and usage history
+│   ├── paymentSession.js         # In-memory payment session store (10-min TTL)
+│   ├── utils.js                  # HTML parsing, result normalisation, XSS escaping
+│   ├── validators.js             # Meter ID and amount validation
+│   ├── config.js                 # Base URLs and shared HTTP headers
+│   └── analytics.js              # Event tracking and exception capture
+├── bot/
+│   ├── index.js                  # Telegraf bot setup and handler registration
+│   ├── handlers/                 # Command and text message handlers
+│   ├── services/                 # Bot session, user store, lookup helpers
+│   └── constants.js              # Stage names, keyboards, shared messages
+└── frontend/                     # React + Vite frontend
+    ├── src/
+    │   ├── App.jsx               # React Router routes
+    │   ├── pages/
+    │   │   ├── HomePage.jsx      # Hostel selection + meter ID + amount entry
+    │   │   ├── LoadingPage.jsx   # Spinner; calls /webapp/bootstrap
+    │   │   ├── CardPaymentPage.jsx  # RSA card form; calls /webapp/enets_pay
+    │   │   └── ResultPage.jsx    # Payment outcome
+    │   ├── components/           # Card, DetailRow, Logo, ErrorCard
+    │   └── lib/                  # rsa.js, cardBrand.js, validation.js
+    └── __tests__/                # Vitest + Testing Library tests
 ```
 
 ## Notes
 
-- Sessions are in-memory only — state is lost on bot restart.
+- Sessions are in-memory — state is lost on restart. Payment sessions expire after 10 minutes; bot sessions after 15 minutes.
 - Card details are RSA-encrypted in the browser before being sent to the server. The server never sees plaintext card numbers or CVVs.
-- The cp2nus flow distinguishes between the top-level `netsMid` (`UMID_xxx`, used in the card page) and `paymtNetsMid` (the acquiring MID from `paymtSvcInfoList[0]`, used in `panSubmitForm`). Using the wrong MID will cause the payment to fail.
+- The cp2nus flow distinguishes between the top-level `netsMid` (`UMID_xxx`) and `paymtNetsMid` (acquiring MID from `paymtSvcInfoList[0]`). Using the wrong MID will cause the payment to fail silently.
 - Minimum top-up: **$6.00 SGD** · Maximum: **$50.00 SGD**
+- The website entry point (`/app/`) and the Telegram Mini App use the same Express routes and React pages — no separate codepaths.

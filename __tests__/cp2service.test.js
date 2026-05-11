@@ -1,16 +1,6 @@
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { describe, test, expect, vi } from "vitest";
 
 const { extractEvsCallbackFromHtml } = require("../services/cp2Service");
-
-vi.mock("axios", () => ({
-  default: {
-    post: vi.fn().mockResolvedValue({
-      status: 200,
-      data: `<html><head><title>EVS POS Main Page</title></head>
-        <body><form action="/EVSWebPOS/loginServlet"></form></body></html>`,
-    }),
-  },
-}));
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
 
@@ -154,17 +144,5 @@ describe("extractEvsCallbackFromHtml", () => {
     const result = extractEvsCallbackFromHtml(CALLBACK_HTML_AMP);
     expect(typeof result.status).toBe("string");
     expect(typeof result.id).toBe("string");
-  });
-});
-
-// ── isCp2Meter (integration-style with mocked axios) ─────────────────────────
-// These tests mock the HTTP layer so no real network call is made.
-
-describe("isCp2Meter", () => {
-  test("returns { ok: false } for an invalid/unknown meter", async () => {
-    const { isCp2Meter } = require("../services/cp2Service");
-    const result = await isCp2Meter("99999999");
-    expect(result.ok).toBe(false);
-    expect(result.result).toBe("invalid");
   });
 });

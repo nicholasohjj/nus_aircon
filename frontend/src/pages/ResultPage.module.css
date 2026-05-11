@@ -1,0 +1,157 @@
+.centred {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 2.5px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Card ───────────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 28px;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+}
+
+/* ── Logo ───────────────────────────────────────────────────────────────────── */
+
+.logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  font-size: 24px;
+  border-width: 1.5px;
+  border-style: solid;
+}
+
+.logoOk {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.logoFail {
+  background: rgba(255, 92, 92, 0.12);
+  border-color: var(--error);
+}
+
+/* ── Text ───────────────────────────────────────────────────────────────────── */
+
+.title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 24px;
+}
+
+/* ── Detail rows ────────────────────────────────────────────────────────────── */
+
+.details {
+  text-align: left;
+}
+
+.detailRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+
+.detailRow:last-of-type {
+  border-bottom: none;
+}
+
+.detailLabel {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.detailValue {
+  font-family: var(--mono);
+  font-weight: 500;
+  color: var(--accent);
+  text-align: right;
+  word-break: break-word;
+  max-width: 60%;
+}
+
+/* ── Status note ────────────────────────────────────────────────────────────── */
+
+.statusNote {
+  margin-top: 22px;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.noteOk {
+  background: rgba(0, 229, 160, 0.08);
+  border: 1px solid rgba(0, 229, 160, 0.22);
+  color: var(--accent);
+}
+
+.noteFail {
+  background: rgba(255, 92, 92, 0.08);
+  border: 1px solid rgba(255, 92, 92, 0.25);
+  color: var(--error);
+}
+
+/* ── Actions ────────────────────────────────────────────────────────────────── */
+
+.actions {
+  margin-top: 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.btn {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btnPrimary {
+  background: var(--accent);
+  color: #000;
+}
+
+.btnSecondary {
+  background: #242424;
+  color: #fff;
+}

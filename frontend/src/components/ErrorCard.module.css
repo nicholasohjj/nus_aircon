@@ -1,0 +1,26 @@
+.errorCard {
+  background: rgba(255, 92, 92, 0.08);
+  border: 1px solid rgba(255, 92, 92, 0.3);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 20px;
+  font-size: 0.83rem;
+  color: var(--error);
+  text-align: left;
+  font-family: var(--mono);
+  line-height: 1.5;
+}
+
+.retryBtn {
+  margin-top: 16px;
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  width: 100%;
+}

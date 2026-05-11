@@ -2,6 +2,16 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 
 const { extractEvsCallbackFromHtml } = require("../services/cp2Service");
 
+vi.mock("axios", () => ({
+  default: {
+    post: vi.fn().mockResolvedValue({
+      status: 200,
+      data: `<html><head><title>EVS POS Main Page</title></head>
+        <body><form action="/EVSWebPOS/loginServlet"></form></body></html>`,
+    }),
+  },
+}));
+
 // ── Test fixtures ─────────────────────────────────────────────────────────────
 
 // eNETS response HTML containing an EVS transSumServlet callback form
@@ -151,21 +161,8 @@ describe("extractEvsCallbackFromHtml", () => {
 // These tests mock the HTTP layer so no real network call is made.
 
 describe("isCp2Meter", () => {
-  beforeEach(() => {
-    vi.resetModules();
-  });
-
   test("returns { ok: false } for an invalid/unknown meter", async () => {
-    vi.doMock("axios", () => ({
-      default: {
-        post: vi.fn().mockResolvedValue({
-          status: 200,
-          data: `<html><head><title>EVS POS Main Page</title></head>
-            <body><form action="/EVSWebPOS/loginServlet"></form></body></html>`,
-        }),
-      },
-    }));
-    const { isCp2Meter } = await import("../services/cp2Service");
+    const { isCp2Meter } = require("../services/cp2Service");
     const result = await isCp2Meter("99999999");
     expect(result.ok).toBe(false);
     expect(result.result).toBe("invalid");

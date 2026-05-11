@@ -15,12 +15,7 @@ const {
   parseEnetsResult,
   normalizeFinalOutcome,
 } = require("../services/utils");
-const {
-  errorPage,
-  loadingPage,
-  cardPaymentPage,
-  renderFinalResultPage,
-} = require("../views/cp2");
+const { errorPage } = require("../views/errorPage");
 const {
   runPurchaseFlow,
   postResultToEvs,
@@ -109,63 +104,23 @@ router.get("/purchase_flow/enets", async (req, res) => {
 router.get("/webapp/result", (req, res) => {
   const { token } = req.query;
 
-  if (token) {
-    const session = getPaymentSession(token);
-    if (!session)
-      return res
-        .status(400)
-        .send(
-          errorPage(
-            "Session expired. Check your meter balance to confirm payment.",
-          ),
-        );
-
-    const {
-      status,
-      merchantTxnRef,
-      txtMtrId,
-      txtAmount,
-      reason,
-      address,
-      balance,
-    } = session;
-
-    res.setHeader("Content-Type", "text/html; charset=UTF-8");
-    return res.send(
-      renderFinalResultPage({
-        status,
-        merchantTxnRef,
-        meterId: txtMtrId,
-        amount: txtAmount,
-        reason,
-        address,
-        balance,
-        token,
-      }),
-    );
+  if (!token) {
+    return res.status(400).send(errorPage("Missing result token."));
   }
 
-  const {
-    status = "unknown",
-    ref = "",
-    meterId = "",
-    amount = "",
-    reason = "",
-    address = "",
-    balance = "",
-  } = req.query;
+  const session = getPaymentSession(token);
+  if (!session) {
+    return res
+      .status(400)
+      .send(
+        errorPage(
+          "Session expired. Check your meter balance to confirm payment.",
+        ),
+      );
+  }
 
-  return res.send(
-    renderFinalResultPage({
-      status,
-      merchantTxnRef: ref,
-      meterId,
-      amount,
-      reason,
-      address,
-      balance,
-    }),
-  );
+  // Session exists — redirect to React result page
+  return res.redirect(`/app/result?token=${encodeURIComponent(token)}`);
 });
 
 router.get("/webapp/bootstrap", async (req, res) => {
@@ -485,30 +440,7 @@ router.get("/webapp/pay", (req, res) => {
         errorPage("Payment session expired or invalid. Please start again."),
       );
 
-  const { txtMtrId, txtAmount, address, balance, nets } = session;
-  const { n, e, netsMid, netsTxnRef, merchantTxnRef } = nets;
-
-  if (!txtMtrId || !txtAmount || !n || !e || !netsMid || !netsTxnRef) {
-    return res
-      .status(400)
-      .send(errorPage("Missing required payment parameters."));
-  }
-
-  res.setHeader("Content-Type", "text/html; charset=UTF-8");
-  return res.send(
-    cardPaymentPage({
-      n,
-      e,
-      netsMid,
-      netsTxnRef,
-      merchantTxnRef: merchantTxnRef || "",
-      amount: txtAmount,
-      meterId: txtMtrId,
-      address,
-      balance,
-      token,
-    }),
-  );
+  return res.redirect(`/app/pay?token=${encodeURIComponent(token)}`);
 });
 
 router.post("/evs/creditpayment", async (req, res) => {
@@ -614,21 +546,45 @@ router.get("/webapp", async (req, res) => {
       amount: txtAmount,
       ua: req.get("user-agent"),
     });
-    return res
-      .status(200)
-      .send(loadingPage(txtMtrId, txtAmount, meterSummary, chatId));
-  } catch (err) {
-    return res
-      .status(200)
-      .send(
-        loadingPage(
-          txtMtrId,
-          txtAmount,
-          { address: null, credit_bal: null },
-          chatId,
-        ),
-      );
+
+    const qs = new URLSearchParams({
+      txtMtrId,
+      txtAmount,
+      chatId: chatId || "",
+      address: meterSummary.address || "",
+      balance: String(meterSummary.credit_bal ?? ""),
+    }).toString();
+
+    return res.redirect(`/app/loading?${qs}`);
+  } catch {
+    const qs = new URLSearchParams({
+      txtMtrId,
+      txtAmount,
+      chatId: chatId || "",
+    }).toString();
+
+    return res.redirect(`/app/loading?${qs}`);
   }
+});
+
+router.get("/webapp/session", (req, res) => {
+  const { token } = req.query;
+  if (!token)
+    return res.status(400).json({ ok: false, error: "Missing token." });
+
+  const session = getPaymentSession(token);
+  if (!session)
+    return res.status(400).json({ ok: false, error: "Session expired." });
+
+  const { txtMtrId, txtAmount, address, balance, nets } = session;
+  return res.json({
+    ok: true,
+    txtMtrId,
+    txtAmount,
+    address: address || "",
+    balance: balance || "",
+    ...nets,
+  });
 });
 
 router.post(

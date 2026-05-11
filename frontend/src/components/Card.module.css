@@ -1,0 +1,49 @@
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 28px;
+  width: 100%;
+  max-width: 400px;
+}
+
+.detailRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+  gap: 12px;
+}
+
+.detailRow:last-of-type {
+  border-bottom: none;
+}
+
+.detailLabel {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.detailValue {
+  font-family: var(--mono);
+  font-weight: 500;
+  color: var(--accent);
+  text-align: right;
+  word-break: break-word;
+  max-width: 58%;
+}
+
+.logo {
+  width: 52px;
+  height: 52px;
+  background: var(--accent-dim);
+  border: 1.5px solid var(--accent);
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 24px;
+  font-size: 24px;
+}

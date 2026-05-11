@@ -12,6 +12,12 @@ require("./bot/index");
 const app = express();
 app.use("/assets", express.static("assets"));
 
+app.use("/app", express.static(path.join(__dirname, "frontend/dist")));
+
+app.get(/^\/app\/.*$/, (req, res) => {
+  res.sendFile(path.join(__dirname, "frontend/dist/index.html"));
+});
+
 let termsHtml;
 try {
   const md = fs.readFileSync(path.join(__dirname, "terms.md"), "utf8");

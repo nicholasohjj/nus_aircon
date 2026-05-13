@@ -331,7 +331,6 @@ export default function CardPaymentPage({ basePath = "" }) {
             style={{ fontFamily: "var(--sans)" }}
           />
         </Field>
-
         <Field label="Email" error={errors.email}>
           <Input
             name="email"
@@ -344,7 +343,6 @@ export default function CardPaymentPage({ basePath = "" }) {
             style={{ fontFamily: "var(--sans)" }}
           />
         </Field>
-
         <Field label="Card number" error={errors.cardNo}>
           <div className={styles.cardNumberWrap}>
             <Input
@@ -367,7 +365,6 @@ export default function CardPaymentPage({ basePath = "" }) {
             />
           </div>
         </Field>
-
         <div className={styles.row3}>
           <Field label="Month" error={errors.expMth}>
             <Input
@@ -416,15 +413,16 @@ export default function CardPaymentPage({ basePath = "" }) {
             </div>
           </Field>
         </div>
-
         {globalError && (
           <div className={styles.globalError}>⚠️ {globalError}</div>
         )}
-
         <button type="submit" className={styles.btn} disabled={submitting}>
           {btnLabel}
         </button>
-        <p className={styles.lock}>🔒 eNETS RSA-encrypted · Powered by eNETS</p>
+        <p className={styles.lock}>
+          🔒 eNETS RSA-encrypted · Powered by eNETS ·{" "}
+          <a href="/app/terms">Terms</a>
+        </p>{" "}
       </form>
     </Card>
   );

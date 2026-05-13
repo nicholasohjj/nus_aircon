@@ -174,7 +174,8 @@ export default function HomePage() {
 
         <p className={styles.hint}>
           Payment is processed securely via eNETS. Your card details are
-          RSA-encrypted before leaving your device.
+          RSA-encrypted before leaving your device.{" "}
+          <a href="/app/terms">Terms of Use</a>
         </p>
       </form>
     </Card>

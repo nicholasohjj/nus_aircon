@@ -240,15 +240,6 @@ async function handleAwaitingAmount(ctx, chatId, text, session) {
     amount: amountDollars,
   });
 
-  // Last-resort guard — isValidMeterId must remain /^\d{8}$/
-  if (!isValidMeterId(session.txtMtrId)) {
-    resetSession(chatId);
-    return ctx.reply(
-      "⚠️ Something went wrong with your Meter ID. Please start again.",
-      mainKeyboard,
-    );
-  }
-
   saveUser(chatId, session.txtMtrId, session.hostel);
 
   const webAppPath = getWebAppPath(session.hostel);

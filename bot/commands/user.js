@@ -61,8 +61,9 @@ function registerStart(bot) {
     if (isValidMeterId(payload)) {
       track("bot_start_deeplink", { chatId, meterId: payload });
       // Stash the meter ID so startTopUp can pick it up
-      getSession(chatId).txtMtrId = payload;
-      return handleTopUpStart(ctx, chatId);
+      const session = getSession(chatId);
+      session.txtMtrId = payload;
+      return handleTopUpStart(ctx, chatId, payload);
     }
 
     return ctx.reply(
@@ -184,7 +185,7 @@ function registerFeedback(bot) {
     session.stage = STAGES.AWAITING_FEEDBACK_RATING;
 
     return ctx.reply(
-      "💬 *Share your feedback*\n\nHow would you rate your experience?",
+      "💬 <b>Share your feedback<b>\n\nHow would you rate your experience?",
       {
         parse_mode: "HTML",
         ...ratingKeyboard(),

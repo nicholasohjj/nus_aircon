@@ -239,7 +239,7 @@ router.post(
       } = req.body;
 
       const { token } = req.body;
-      const session = getPaymentSession(token);
+      session = getPaymentSession(token);
       if (!session) {
         return res
           .status(400)

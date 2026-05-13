@@ -2,9 +2,9 @@
 
 A Telegram bot and web app that lets NUS hostel residents top up their EVS electricity meters via credit card, without needing to visit a physical terminal.
 
-## Supported Hostels
+## Supported hostels
 
-| Hostel Group                                          | EVS System          |
+| Hostel group                                          | EVS system          |
 | ----------------------------------------------------- | ------------------- |
 | PGPR, Houses @ PGP, Residential Colleges, NUS College | `cp2.evs.com.sg`    |
 | UTown Residence, RVRC                                 | `cp2nus.evs.com.sg` |
@@ -48,7 +48,7 @@ Telegram Bot (telegraf)          Website (React, /app/)
           └── /cp2nus/result    — cp2nus variant
 ```
 
-## Payment Flows
+## Payment flows
 
 ### CP2 — PGPR / Houses @ PGP / Residential Colleges / NUS College
 
@@ -76,7 +76,7 @@ Uses the EVS JSON API and the eNETS Payment Page (enetspp) host directly.
 
 1. **`/webapp`** — same as cp2; fetches meter info, redirects to `/app/cp2nus/loading`
 2. **Bootstrap** (`/cp2nus/webapp/bootstrap`) — `runBootstrap` runs sequentially:
-   - **Meter system check** — `isCp2Meter()` guard: rejects cp2 meters immediately
+   - **Meter system check** — `isCp2Meter()` guard: rejects cp2 meters with a `WRONG_SYSTEM` error; on network failure the check is skipped and flow proceeds
    - **`init_pay`** — `POST /enets/init_pay` → `{ txn_identifier, req, sign }`
    - **`meter_info`** — `getMeterSummary` → `buildPayDisplayAddress`
    - **`enetspp_pay`** — `buildEnetsPayUrl` → `GET enetspp/pay?p=…` → extract `txnReq`, `keyId`, `hmac`
@@ -108,7 +108,7 @@ npm install
 npm run build:frontend
 ```
 
-### Environment Variables
+### Environment variables
 
 Create a `.env` file:
 
@@ -116,6 +116,8 @@ Create a `.env` file:
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 SERVER_URL=https://your-public-server.example.com
 OWNER_CHAT_ID=your_telegram_chat_id   # receives feedback notifications
+TOPUP_DISABLED=false                  # set to "true" to show maintenance message
+DB_DIR=/data                          # directory for SQLite user store (default: /data if it exists, else .)
 ```
 
 `SERVER_URL` must be HTTPS for the Telegram WebApp payment button to work. If it is HTTP, the bot falls back to a plain browser link instead.
@@ -144,7 +146,7 @@ npm test
 cd frontend && npm test
 ```
 
-## Bot Commands
+## Bot commands
 
 | Command     | Description                       |
 | ----------- | --------------------------------- |
@@ -156,30 +158,43 @@ cd frontend && npm test
 | `/cancel`   | Cancel the current flow           |
 | `/help`     | Show help and hostel information  |
 
-## Bot Session Flow
+## Bot session flow
 
 Sessions are stored in-memory with a **15-minute TTL**. All messages for a given chat are serialised through a per-chat lock to prevent race conditions. The top-up flow stages are:
 
 ```
 idle
-  → awaiting_hostel      (cp2 / cp2nus keyboard)
-  → awaiting_meter_id    (8-digit ID; prefetches balance + 7-day usage)
-  → awaiting_amount      ($6–$50 SGD)
-  → awaiting_payment     (WebApp Pay button; re-prompts on text)
-  → idle                 (reset after WebApp closes)
+  → awaiting_hostel            (cp2 / cp2nus inline keyboard)
+  → awaiting_meter_id          (8-digit ID; prefetches balance + 7-day usage)
+  → awaiting_amount            ($6–$50 SGD)
+  → awaiting_payment           (WebApp Pay button; re-prompts on text)
+  → idle                       (reset after WebApp closes)
+
+  → awaiting_meter_id_balance  (/balance with no saved meter)
+  → awaiting_meter_id_usage    (/usage with no saved meter)
+
+  → awaiting_feedback_rating   (/feedback — star rating keyboard)
+  → awaiting_feedback_text     (free-text or ⏭ Skip)
+  → idle
 ```
 
-`/balance` and `/usage` use single-step stages that return to idle after one response. `/feedback` uses `awaiting_feedback_rating` → `awaiting_feedback_text`, then notifies `OWNER_CHAT_ID`.
+`/balance` and `/usage` use single-step stages that return to idle after one response.
 
-## Payment Session
+## Payment session
 
 Payment sessions (created by `/webapp/bootstrap`) are stored in-memory with a **10-minute TTL**, separate from bot sessions. The session holds the meter ID, amount, address, balance, eNETS keys, and the payment outcome once complete. The React frontend reads outcome data from the session via `GET /webapp/session?token=` — query params are never trusted for payment results.
 
-## Owner Reply Threading
+## User store
 
-When a user submits feedback, the bot forwards a notification to `OWNER_CHAT_ID`. The owner can reply directly to that message and the bot forwards the reply back to the user. Replies are routed via an in-memory `pendingReplies` map (7-day TTL).
+Saved meter IDs and hostels are persisted in a SQLite database (`evs_users.db`) using `better-sqlite3`. The database is written to `DB_DIR` (Railway Volume at `/data` if present, otherwise the project root). Unlike bot sessions and payment sessions, the user store survives restarts.
 
-## Project Structure
+## Owner reply threading
+
+When a user submits feedback, the bot forwards a notification to `OWNER_CHAT_ID`. The owner can reply directly to that Telegram notification and the bot forwards the reply back to the user. Reply threads are tracked via an in-memory `pendingReplies` map with a 7-day TTL.
+
+Note: threading only follows the original notification message. If the owner replies to their own reply, that message is not automatically routed back to the user — only replies to the original forwarded notification are intercepted.
+
+## Project structure
 
 ```
 ├── server.js                        # Express entry point; serves React at /app/
@@ -216,8 +231,9 @@ When a user submits feedback, the bot forwards a notification to `OWNER_CHAT_ID`
 
 ## Notes
 
-- Sessions are in-memory — state is lost on restart. Payment sessions expire after 10 minutes; bot sessions after 15 minutes.
+- Bot sessions and payment sessions are in-memory — state is lost on restart. Payment sessions expire after 10 minutes; bot sessions after 15 minutes. The user store (saved meter IDs) is SQLite-backed and persists across restarts.
 - Card details are RSA-encrypted in the browser before being sent to the server. The server never sees plaintext card numbers or CVVs.
 - The cp2nus flow distinguishes between the top-level `netsMid` (`UMID_xxx`) and `paymtNetsMid` (acquiring MID from `paymtSvcInfoList[0]`). Using the wrong MID will cause the payment to fail silently.
 - Minimum top-up: **$6.00 SGD** · Maximum: **$50.00 SGD**
 - The website entry point (`/app/`) and the Telegram Mini App use the same Express routes and React pages — no separate codepaths.
+- Top-ups can be disabled at runtime with `/topupoff` (owner command) or at startup with `TOPUP_DISABLED=true`. Users in an active top-up session when the flag is set will have their session reset and see the maintenance message.

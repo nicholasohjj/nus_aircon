@@ -156,6 +156,17 @@ export default function ResultPage({ basePath = "" }) {
       </div>
 
       <div className={styles.actions}>
+        {ok && basePath === "/cp2nus" && (
+          <a
+            href={`/cp2nus/webapp/receipt?token=${encodeURIComponent(token)}`}
+            target="_blank"
+            rel="noreferrer"
+            className={[styles.btn, styles.btnSecondary].join(" ")}
+            style={{ gridColumn: "1 / -1" }}
+          >
+            Download Receipt
+          </a>
+        )}
         <button
           className={[
             styles.btn,

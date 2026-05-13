@@ -347,6 +347,48 @@ async function callCreditInit({ txnRand, keyId, hmac, jsessionId }) {
   return { jsessionId: returnedSession, status: resp.status };
 }
 
+async function fetchReceipt(jsessionId, payResultUrl) {
+  try {
+    const referer = payResultUrl ? payResultUrl : `${ENETS_PP_HOST}/pay_result`;
+
+    const resp = await axios.get(`${ENETS_PP_HOST}/get_receipt`, {
+      headers: {
+        ...DEFAULT_HEADERS,
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Site": "same-origin",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-User": "?1",
+        "Sec-Fetch-Dest": "document",
+        Referer: referer,
+        Cookie: `JSESSIONID=${jsessionId}`,
+      },
+      responseType: "arraybuffer",
+      validateStatus: () => true,
+      timeout: 8000,
+    });
+
+    console.log(
+      "[fetchReceipt] status:",
+      resp.status,
+      "content-type:",
+      resp.headers["content-type"],
+    );
+
+    if (
+      resp.status === 200 &&
+      String(resp.headers["content-type"] || "").includes("pdf")
+    ) {
+      return Buffer.from(resp.data);
+    }
+  } catch (err) {
+    console.error("[fetchReceipt] error:", err.message);
+  }
+  return null;
+}
+
 async function submitPanForm({
   jsessionId,
   txnRand,
@@ -445,35 +487,33 @@ async function submitPanForm({
   }
 
   let preParsed = null;
-  try {
-    const msgObj = JSON.parse(decodeURIComponent(message));
-    const status = msgObj?.msg?.netsTxnStatus;
-    const msg = msgObj?.msg || {};
+  const msgObj = JSON.parse(decodeURIComponent(message));
+  const status = msgObj?.msg?.netsTxnStatus;
+  const msg = msgObj?.msg || {};
 
-    if (status === "1" || msgObj?.ss === "0") {
-      preParsed = {
-        status: "failure",
-        merchantTxnRef: msg.merchantTxnRef || null,
-        meterId: null,
-        amount: null,
-        stageRespCode: msg.stageRespCode || null,
-        reason: (msg.netsTxnMsg || "Payment declined.").replace(/\+/g, " "),
-      };
-    } else if (status === "0") {
-      // Approved — bank has authorised, no need to hit b2s
-      const amtDeducted = msg.netsAmountDeducted;
-      const amtFormatted =
-        amtDeducted > 0 ? `S$ ${(amtDeducted / 100).toFixed(2)}` : null;
-      preParsed = {
-        status: "success",
-        merchantTxnRef: msg.merchantTxnRef || null,
-        meterId: null,
-        amount: amtFormatted,
-        stageRespCode: msg.stageRespCode || null,
-        reason: "Payment completed.",
-      };
-    }
-  } catch {}
+  if (status === "1" || msgObj?.ss === "0") {
+    preParsed = {
+      status: "failure",
+      merchantTxnRef: msg.merchantTxnRef || null,
+      meterId: null,
+      amount: null,
+      stageRespCode: msg.stageRespCode || null,
+      reason: (msg.netsTxnMsg || "Payment declined.").replace(/\+/g, " "),
+    };
+  } else if (status === "0") {
+    // Approved — bank has authorised, no need to hit b2s
+    const amtDeducted = msg.netsAmountDeducted;
+    const amtFormatted =
+      amtDeducted > 0 ? `S$ ${(amtDeducted / 100).toFixed(2)}` : null;
+    preParsed = {
+      status: "success",
+      merchantTxnRef: msg.merchantTxnRef || null,
+      meterId: null,
+      amount: amtFormatted,
+      stageRespCode: msg.stageRespCode || null,
+      reason: "Payment completed.",
+    };
+  }
   return { message, hmac, keyId, action, preParsed };
 }
 
@@ -598,6 +638,7 @@ module.exports = {
   buildEnetsPayUrl,
   fetchEnvJsp,
   fetchNetsFields,
+  fetchReceipt,
   callTxnReqListener,
   runBootstrap,
   callCreditInit,

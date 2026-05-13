@@ -368,8 +368,8 @@ function extractEvsCallbackFromHtml(html) {
 
   if (!action || !message) return null;
 
-  let status = null;
-  let id = null;
+  let status;
+  let id;
 
   try {
     const u = new URL(action, CP2_WEBPOS_BASE);

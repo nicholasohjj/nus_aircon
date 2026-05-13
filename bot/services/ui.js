@@ -1,6 +1,7 @@
 const { mainKeyboard } = require("../constants");
 
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:3000";
+const GITHUB_URL = process.env.GITHUB_URL;
 
 function helpText() {
   return (
@@ -25,7 +26,10 @@ function helpText() {
     `• /feedback — share feedback or report an issue\n` +
     `• /forget — clear your saved Meter ID and hostel\n` +
     `• /cancel — cancel the current flow\n` +
-    `• /help — show this message`
+    `• /help — show this message\n\n` +
+    `*Terms of Use*\n` +
+    `${SERVER_URL}/app/terms\n\n` +
+    `Open source · ${GITHUB_URL}`
   );
 }
 

@@ -432,9 +432,7 @@ describe("parseEvsTransactionSummary", () => {
   test("parses a failed transaction", () => {
     const result = parseEvsTransactionSummary(EVS_FAILURE_HTML);
     expect(result.status).toBe("failure");
-    expect(result.reason).toBe(
-      "Transaction rejected.",
-    );
+    expect(result.reason).toBe("Transaction rejected.");
     expect(result.meterId).toBe("12345678");
   });
 

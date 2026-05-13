@@ -13,6 +13,7 @@ const { DEFAULT_HEADERS, CP2NUS_BASE_PATH } = require("../services/config");
 const { errorPage } = require("../views/errorPage");
 const {
   fetchEnvJsp,
+  fetchReceipt,
   runBootstrap,
   callCreditInit,
   submitPanForm,
@@ -81,6 +82,7 @@ router.get("/webapp/session", (req, res) => {
     status,
     reason,
     merchantTxnRef,
+    source,
   } = session;
   return res.json({
     ok: true,
@@ -91,6 +93,7 @@ router.get("/webapp/session", (req, res) => {
     status,
     reason: reason || "",
     merchantTxnRef: merchantTxnRef || "",
+    source: source || "",
     ...nets,
   });
 });
@@ -187,6 +190,17 @@ router.get("/webapp/pay", (req, res) => {
       );
 
   return res.redirect(`/app/cp2nus/pay?token=${encodeURIComponent(token)}`);
+});
+
+router.get("/webapp/receipt", (req, res) => {
+  const { token } = req.query;
+  const session = getPaymentSession(token);
+  if (!session?.receiptPdf) {
+    return res.status(404).json({ ok: false, error: "Receipt not available." });
+  }
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", 'inline; filename="receipt.pdf"');
+  return res.send(session.receiptPdf);
 });
 
 router.post("/webapp/notify", express.json(), async (req, res) => {
@@ -336,6 +350,7 @@ router.post(
         session.status = normalized.status;
         session.merchantTxnRef = normalized.merchantTxnRef || merchantTxnRef;
         session.reason = normalized.reason || "";
+        session.source = "pan_result";
         session.completedAt = Date.now();
 
         track(
@@ -376,6 +391,11 @@ router.post(
         jsessionId,
       });
 
+      if (b2sResult.parsed?.status === "success") {
+        const pdfBuffer = await fetchReceipt(jsessionId, b2sResult.finalUrl);
+        if (pdfBuffer) session.receiptPdf = pdfBuffer;
+      }
+
       const parsed = b2sResult.parsed || {};
       const normalized = normalizeFinalOutcome(parsed);
       const finalAmount = parsed.amount || amount || "";
@@ -387,6 +407,7 @@ router.post(
 
       session.status = normalized.status;
       session.merchantTxnRef = normalized.merchantTxnRef || merchantTxnRef;
+      session.source = "pay_result";
       session.completedAt = Date.now();
 
       track(

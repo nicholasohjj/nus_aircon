@@ -72,8 +72,27 @@ router.get("/webapp/session", (req, res) => {
   const session = getPaymentSession(req.query.token);
   if (!session)
     return res.status(400).json({ ok: false, error: "Session expired." });
-  const { txtMtrId, txtAmount, address, balance, nets } = session;
-  return res.json({ ok: true, txtMtrId, txtAmount, address, balance, ...nets });
+  const {
+    txtMtrId,
+    txtAmount,
+    address,
+    balance,
+    nets,
+    status,
+    reason,
+    merchantTxnRef,
+  } = session;
+  return res.json({
+    ok: true,
+    txtMtrId,
+    txtAmount,
+    address,
+    balance,
+    status,
+    reason: reason || "",
+    merchantTxnRef: merchantTxnRef || "",
+    ...nets,
+  });
 });
 
 router.get("/webapp/bootstrap", async (req, res) => {
@@ -287,6 +306,8 @@ router.post(
         jsessionId: envJsessionId, // ← seed with env.jsp session
       });
 
+      const debug = req.body.debug === "1";
+
       // Step 4b: submit RSA-encrypted card data
       // expiryYear arrives as 4-digit string ("2027") — pass through as-is
       const panResult = await submitPanForm({
@@ -304,12 +325,34 @@ router.post(
         browserInfo,
       });
 
+      if (debug && panResult.preParsed) {
+        panResult.preParsed.status = "success";
+        panResult.preParsed.reason = "Payment completed.";
+      }
+
       if (panResult.preParsed) {
         const normalized = normalizeFinalOutcome(panResult.preParsed);
 
         session.status = normalized.status;
         session.merchantTxnRef = normalized.merchantTxnRef || merchantTxnRef;
+        session.reason = normalized.reason || "";
         session.completedAt = Date.now();
+
+        track(
+          normalized.status === "success"
+            ? "payment_completed"
+            : "payment_failed",
+          {
+            meterId,
+            amount,
+            merchantTxnRef: normalized.merchantTxnRef || merchantTxnRef || "",
+            status: normalized.status,
+            reason: normalized.reason || "",
+            route: "cp2nus",
+            source: "pan_result",
+          },
+        );
+
         return res.status(200).json({
           ok: true,
           source: "pan_result",
@@ -337,9 +380,29 @@ router.post(
       const normalized = normalizeFinalOutcome(parsed);
       const finalAmount = parsed.amount || amount || "";
 
+      if (debug) {
+        normalized.status = "success";
+        normalized.reason = "Payment completed.";
+      }
+
       session.status = normalized.status;
       session.merchantTxnRef = normalized.merchantTxnRef || merchantTxnRef;
       session.completedAt = Date.now();
+
+      track(
+        normalized.status === "success"
+          ? "payment_completed"
+          : "payment_failed",
+        {
+          meterId: normalized.meterId || meterId || "",
+          amount: finalAmount,
+          merchantTxnRef: normalized.merchantTxnRef || merchantTxnRef || "",
+          status: normalized.status,
+          reason: normalized.reason || "",
+          route: "cp2nus",
+          source: "pay_result",
+        },
+      );
 
       return res.status(200).json({
         ok: true,

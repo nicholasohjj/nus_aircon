@@ -433,7 +433,7 @@ describe("parseEvsTransactionSummary", () => {
     const result = parseEvsTransactionSummary(EVS_FAILURE_HTML);
     expect(result.status).toBe("failure");
     expect(result.reason).toBe(
-      "Transaction is rejected by financial institution.",
+      "Transaction rejected.",
     );
     expect(result.meterId).toBe("12345678");
   });

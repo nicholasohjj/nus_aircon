@@ -143,6 +143,13 @@ async function handleAwaitingMeterId(ctx, chatId, text, session) {
 
     session.stage = STAGES.AWAITING_AMOUNT;
 
+    track("meter_id_looked_up", {
+      chatId,
+      meterId: text,
+      hasAddress: !!summary.address,
+      hasBalance: summary.credit_bal != null,
+    });
+
     const lines = [`✅ Meter ID: <code>${text}</code>`];
     if (summary.address)
       lines.push(`🏠 <b>Address:</b> ${escHtml(summary.address)}`);
@@ -300,7 +307,7 @@ async function handleAwaitingAmount(ctx, chatId, text, session) {
   return ctx.replyWithMarkdown(
     orderSummary +
       `Tap below to proceed to payment:\n\n` +
-      `📄 By proceeding, you agree to our [Terms of Use](${SERVER_URL}/terms).`,
+      `📄 By proceeding, you agree to our [Terms of Use](${SERVER_URL}/app/terms).`,
     Markup.keyboard([
       [Markup.button.webApp("💳 Pay Now", webAppUrl)],
       ["❌ Cancel"],

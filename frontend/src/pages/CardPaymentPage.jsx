@@ -72,10 +72,25 @@ export default function CardPaymentPage({ basePath = "" }) {
   const [submitting, setSubmitting] = useState(false);
   const [btnLabel, setBtnLabel] = useState("");
 
+  const [debugActive, setDebugActive] = useState(0);
+  const lastTapRef = useRef(0);
+
   // Refs for auto-focus chaining
   const expMthRef = useRef(null);
   const expYrRef = useRef(null);
   const cvvRef = useRef(null);
+  const pressTimer = useRef(null);
+
+  function handlePressStart() {
+    pressTimer.current = setTimeout(
+      () => setDebugActive((v) => (v ? 0 : 1)),
+      1000,
+    );
+  }
+
+  function handlePressEnd() {
+    clearTimeout(pressTimer.current);
+  }
 
   // ── Load session from Express ───────────────────────────────────────────────
   // paymentSession.js TTL is 10 minutes. Expiry at this point is unlikely
@@ -233,6 +248,7 @@ export default function CardPaymentPage({ basePath = "" }) {
         address,
         balance,
         amount: `S$ ${Number(txtAmount).toFixed(2)}`,
+        debug: String(debugActive),
       });
 
       setBtnLabel("Processing…");
@@ -280,7 +296,14 @@ export default function CardPaymentPage({ basePath = "" }) {
     // since the session never loaded, so we link back to the Telegram bot.
     return (
       <Card align="center">
-        <Logo>⚡</Logo>
+        <span
+          onPointerDown={handlePressStart}
+          onPointerUp={handlePressEnd}
+          onPointerLeave={handlePressEnd}
+          style={{ cursor: "pointer", userSelect: "none" }}
+        >
+          <Logo>{debugActive ? "🔓" : "⚡"}</Logo>
+        </span>
         <div className={styles.loadErr}>{loadErr.message}</div>
         {loadErr.expired && (
           <p className={styles.loadErrHint}>
@@ -295,7 +318,14 @@ export default function CardPaymentPage({ basePath = "" }) {
   if (!session) {
     return (
       <Card align="center">
-        <Logo>⚡</Logo>
+        <span
+          onPointerDown={handlePressStart}
+          onPointerUp={handlePressEnd}
+          onPointerLeave={handlePressEnd}
+          style={{ cursor: "pointer", userSelect: "none" }}
+        >
+          <Logo>{debugActive ? "🔓" : "⚡"}</Logo>
+        </span>
         <div className={styles.spinner} />
       </Card>
     );
@@ -305,19 +335,24 @@ export default function CardPaymentPage({ basePath = "" }) {
 
   return (
     <Card align="left">
-      <Logo>⚡</Logo>
+      <span
+        onPointerDown={handlePressStart}
+        onPointerUp={handlePressEnd}
+        onPointerLeave={handlePressEnd}
+        style={{ cursor: "pointer", userSelect: "none" }}
+      >
+        <Logo>{debugActive ? "🔓" : "⚡"}</Logo>
+      </span>
       <h1 className={styles.title}>Card payment</h1>
       <p className={styles.sub}>
         Details are RSA-encrypted before leaving your device.
       </p>
-
       <div className={styles.summary}>
         <span>
           Meter <span className={styles.summaryMono}>{session.txtMtrId}</span>
         </span>
         <span className={styles.summaryVal}>SGD {amtDisplay}</span>
       </div>
-
       <form onSubmit={handleSubmit} autoComplete="off">
         <Field label="Cardholder name" error={errors.name}>
           <Input

@@ -136,9 +136,16 @@ function parseEvsTransactionSummary(html) {
     body.match(/<b>S\$ ?([\d.]+)<\/b>/i)?.[1] ||
     null;
 
-  const isFailure = /Transaction is rejected by financial institution\./i.test(
-    body,
-  );
+  // Scrape the actual alert/reason text from the page
+  const alertText =
+    body
+      .match(/<span[^>]*\bid=["']lblAlert["'][^>]*>\s*([^<]+)\s*<\/span>/i)?.[1]
+      ?.trim() || null;
+
+  const isFailure =
+    /Failed to purchase/i.test(body) ||
+    /Transaction is rejected/i.test(body) ||
+    (alertText != null && !/Thank You/i.test(alertText));
 
   return {
     title,
@@ -148,7 +155,7 @@ function parseEvsTransactionSummary(html) {
     amount,
     status: isFailure ? "failure" : "success",
     reason: isFailure
-      ? "Transaction is rejected by financial institution."
+      ? alertText || "Transaction rejected."
       : "Payment completed.",
   };
 }
@@ -223,7 +230,11 @@ function parseEnetsResult(html) {
 // ── Outcome normalisation ─────────────────────────────────────────────────────
 
 function normalizeFinalOutcome(parsed = {}) {
-  const reason = parsed.reason || "Unable to determine transaction outcome.";
+  const reason =
+    parsed.reason ||
+    parsed.error || // ← add this
+    "Unable to determine transaction outcome.";
+
   const isFailure =
     parsed.status === "failure" ||
     /rejected by financial institution/i.test(reason) ||

@@ -68,7 +68,7 @@ function registerStart(bot) {
 
     return ctx.reply(
       `⚡ EVS Electricity Top-Up\n\nChoose an option below:\n\n` +
-        `📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
+        `📄 By using this bot, you agree to our <a href="${SERVER_URL}/app/terms">Terms of Use</a>.`,
       { parse_mode: "HTML", reply_markup: mainKeyboard.reply_markup },
     );
   });
@@ -196,7 +196,11 @@ function registerFeedback(bot) {
 
 // ── /help ─────────────────────────────────────────────────────────────────────
 function registerHelp(bot) {
-  bot.command("help", sendHelp);
+  bot.command("help", async (ctx) => {
+    const chatId = ctx.chat?.id;
+    if (chatId) track("help_command", { chatId });
+    return sendHelp(ctx);
+  });
 }
 
 // ── /cancel ───────────────────────────────────────────────────────────────────

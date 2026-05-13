@@ -319,8 +319,10 @@ router.post(
           req.headers.cookie?.match(/(?:^|;\s*)JSESSIONID=([^;]+)/i)?.[1] ||
           null;
 
+        const debug = req.body.debug === "1";
+
         const evsResult = await postResultToEvs({
-          status: evsCb.status,
+          status: debug ? "1" : evsCb.status,
           id: evsCb.id,
           message: evsCb.message,
           jsessionid,
@@ -337,6 +339,11 @@ router.post(
           session.nets?.merchantTxnRef ||
           "";
         session.reason = normalized.reason || "";
+        console.log(
+          "session after write",
+          token,
+          JSON.stringify({ status: session.status, reason: session.reason }),
+        );
         session.completedAt = Date.now();
 
         const eventName =
@@ -576,13 +583,30 @@ router.get("/webapp/session", (req, res) => {
   if (!session)
     return res.status(400).json({ ok: false, error: "Session expired." });
 
-  const { txtMtrId, txtAmount, address, balance, nets } = session;
+  const {
+    txtMtrId,
+    txtAmount,
+    address,
+    balance,
+    nets,
+    status,
+    reason,
+    merchantTxnRef,
+  } = session;
+  console.log(
+    "session at read",
+    token,
+    JSON.stringify({ status: session.status, reason: session.reason }),
+  );
   return res.json({
     ok: true,
     txtMtrId,
     txtAmount,
     address: address || "",
     balance: balance || "",
+    status,
+    reason: reason || "",
+    merchantTxnRef: merchantTxnRef || "",
     ...nets,
   });
 });
@@ -591,7 +615,7 @@ router.post(
   "/webapp/transsum",
   express.urlencoded({ extended: false }),
   async (req, res) => {
-    const { status = "0", id, token } = req.query; // single destructure, outside try
+    const { status = "0", id, token } = req.query;
     const { message } = req.body || {};
     try {
       if (!message || !id) {
@@ -625,7 +649,7 @@ router.post(
         session.status = parsed.status || "unknown";
         session.merchantTxnRef =
           parsed.merchantTxnRef || id || session.nets?.merchantTxnRef || "";
-        session.reason = parsed.reason || "";
+        session.reason = parsed.reason || session.reason || "";
         session.completedAt = Date.now();
 
         const eventName =

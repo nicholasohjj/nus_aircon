@@ -107,8 +107,7 @@ export default function ResultPage({ basePath = "" }) {
   const subtitle = ok
     ? "Your transaction has been processed."
     : "Your transaction was not completed.";
-  const reason =
-    session.reason || "Transaction is rejected by financial institution.";
+  const reason = session.reason;
 
   const balanceDisplay =
     session.balance !== undefined &&

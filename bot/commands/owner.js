@@ -44,6 +44,13 @@ function registerBroadcast(bot) {
       await new Promise((res) => setTimeout(res, 50));
     }
 
+    track("broadcast_sent", {
+      chatId: ctx.chat?.id,
+      total: chatIds.length,
+      sent,
+      failed,
+    });
+
     return ctx.reply(
       `✅ Broadcast complete. Sent: ${sent}, Failed: ${failed}.`,
     );
@@ -80,6 +87,13 @@ function registerAnnounce(bot) {
       }
       await new Promise((res) => setTimeout(res, 50));
     }
+
+    track("announce_sent", {
+      chatId: ctx.chat?.id,
+      total: chatIds.length,
+      sent,
+      failed,
+    });
 
     return ctx.reply(`✅ Announce complete. Sent: ${sent}, Failed: ${failed}.`);
   });

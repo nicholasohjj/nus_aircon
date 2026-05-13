@@ -1,7 +1,5 @@
 require("dotenv").config();
-const fs = require("fs");
 const path = require("path");
-const { marked } = require("marked");
 const express = require("express");
 const cp2nus = require("./routes/cp2nus");
 const cp2 = require("./routes/cp2");
@@ -22,28 +20,12 @@ app.get(/^\/app\/.*$/, (req, res) => {
   res.sendFile(path.join(__dirname, "frontend/dist/index.html"));
 });
 
-let termsHtml;
-try {
-  const md = fs.readFileSync(path.join(__dirname, "terms.md"), "utf8");
-  termsHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Terms of Use</title>
-  <style>body { font-family: sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; line-height: 1.6 }</style>
-</head>
-<body>${marked(md)}</body>
-</html>`;
-} catch (err) {
-  console.error("Failed to load terms.md:", err.message);
-}
-
 app.get("/health", (req, res) => res.status(200).json({ ok: true }));
 
 app.get("/terms", (req, res) => {
-  if (!termsHtml) return res.status(503).send("Terms temporarily unavailable.");
-  res.send(termsHtml);
+  res.redirect("/app/terms");
 });
+
 if (process.env.NODE_ENV !== "production") {
   app.get("/debug", (req, res) => res.send("cp2nus prefix reachable"));
 }

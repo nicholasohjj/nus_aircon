@@ -1,7 +1,7 @@
 # Terms of Use
 
 **EVS Electricity Top-Up Bot**
-Last updated: April 2026
+Last updated: May 2026
 
 Please read these Terms of Use ("Terms") carefully before using the EVS Electricity Top-Up Bot ("the Bot"). By using the Bot, you agree to be bound by these Terms. If you do not agree, do not use the Bot.
 
@@ -31,7 +31,9 @@ You may use the Bot only if you:
 
 **No refunds** are guaranteed through this Bot. Once a top-up is successfully submitted to the EVS system, it cannot be reversed through this service. For disputes, contact EVS or your card issuer directly.
 
-**Failed transactions.** If a payment is declined or the process fails partway through, a charge is generally not applied. However, some card issuers may place a temporary pre-authorisation hold even when a transaction does not complete. In the event of any technical failure mid-flow, verify the outcome with your card issuer and EVS before retrying.
+**Failed transactions.** If a payment is declined or the process fails partway through, a charge may not be applied. However, some card issuers may place a temporary pre-authorisation hold even when a transaction does not complete. In the event of any technical failure mid-flow, verify the outcome with your card issuer and EVS before retrying.
+
+**Session loss during payment.** If the service restarts while your payment is in progress, your session may be lost and the result page may become inaccessible. If you do not receive a payment confirmation through the Bot, verify the outcome directly with your card issuer and EVS before retrying, to avoid being charged twice.
 
 **Top-up not reflected on meter.** If your payment is confirmed by your card issuer but the top-up does not appear on your meter, the Bot operator has no ability to investigate or resolve this. You must contact EVS directly with your transaction reference number. Do not retry the payment until the original transaction has been clarified, to avoid being charged twice.
 
@@ -55,9 +57,11 @@ You are responsible for entering the correct 8-digit meter ID. Topping up the wr
 
 ## 6. Session and Data Handling
 
-- Bot sessions are stored **in memory only** and expire after 15 minutes of inactivity. No conversation history or meter IDs are persisted to disk.
-- To support feedback replies (see below), message routing information is held in memory for up to **7 days** after a feedback submission. This consists only of Telegram message and chat identifiers; no message content is retained beyond what Telegram itself stores.
-- Basic analytics events and error details are captured to maintain service quality. These do not include your card details.
+- Your **meter ID and hostel selection** are saved to a local database so you do not need to re-enter them on future top-ups. You can delete this at any time with the `/forget` command.
+- **Bot sessions** (conversation state, current top-up stage) are held in memory only and expire after 15 minutes of inactivity. They are not written to disk and are lost on service restart.
+- **Payment sessions** (eNETS keys, transaction state) are held in memory only and expire after 10 minutes. They are not written to disk and are lost on service restart.
+- To support feedback replies, message routing information is held in memory for up to **7 days** after a feedback submission. This consists only of Telegram message and chat identifiers; no message content is retained beyond what Telegram itself stores.
+- Basic analytics events are captured to maintain service quality. These include transaction metadata such as meter ID, top-up amount, and outcome, but never your card details.
 - By submitting feedback via `/feedback`, you consent to your message being forwarded to the Bot operator and to receiving a reply from the Bot operator through the Bot.
 
 ---

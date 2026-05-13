@@ -52,7 +52,7 @@ function registerStart(bot) {
           `🏠 Hostel: <b>${getHostelLabel(HOSTELS.CP2NUS)}</b>\n` +
           `🔌 Meter ID: <code>${meterId}</code>\n\n` +
           `Enter the amount in SGD (e.g. <code>20</code>, min $6, max $50):\n\n` +
-          `📄 By using this bot, you agree to our <a href="${SERVER_URL}/terms">Terms of Use</a>.`,
+          `📄 By using this bot, you agree to our <a href="${SERVER_URL}/app/terms">Terms of Use</a>.`,
         { parse_mode: "HTML", reply_markup: cancelKeyboard.reply_markup },
       );
     }

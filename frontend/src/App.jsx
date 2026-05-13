@@ -3,6 +3,7 @@ import HomePage from "./pages/HomePage";
 import LoadingPage from "./pages/LoadingPage";
 import CardPaymentPage from "./pages/CardPaymentPage";
 import ResultPage from "./pages/ResultPage";
+import TermsPage from "./pages/TermsPage";
 
 export default function App() {
   return (
@@ -10,6 +11,7 @@ export default function App() {
       <Routes>
         {/* Entry point — hostel selection + meter details */}
         <Route path="/" element={<HomePage />} />
+        <Route path="/terms" element={<TermsPage />} />
 
         {/* cp2 flow — PGPR, PGP Houses, Residential Colleges, NUS College */}
         <Route path="/loading" element={<LoadingPage basePath="" />} />
